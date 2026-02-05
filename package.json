@@ -1,0 +1,24 @@
+{
+  "name": "squirkle-backend",
+  "version": "1.0.0",
+  "description": "backend",
+  "main": "index.cjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hajos8/Squirkle-backend.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hajos8/Squirkle-backend/issues"
+  },
+  "homepage": "https://github.com/hajos8/Squirkle-backend#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "firebase": "^12.8.0"
+  }
+}
