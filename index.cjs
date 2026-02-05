@@ -22,6 +22,8 @@ const firebaseConfig = {
     appId: process.env.VITE_FIREBASE_appId
 };
 
+const firebaseApp = firebase.initializeApp(firebaseConfig);
+
 app.post('/api/inventory-check', (req, res) => {
     const { auth_id } = req.body;
 
