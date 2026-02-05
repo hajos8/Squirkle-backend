@@ -34,7 +34,7 @@ app.post('/api/inventory-check', (req, res) => {
 
 app.get('/api/hello', (req, res) => {
     console.log('Received hello request');
-    res.status(200).json({ message: 'Hello from the backend!' });
+    res.status(200).json({ message: 'Hello world!' });
 });
 
 const port = 3333;
