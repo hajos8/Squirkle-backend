@@ -32,6 +32,11 @@ app.post('/api/inventory-check', (req, res) => {
     res.status(200).json({ test: true });
 });
 
+app.get('/api/hello', (req, res) => {
+    console.log('Received hello request');
+    res.status(200).json({ message: 'Hello from the backend!' });
+});
+
 const port = 3333;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
