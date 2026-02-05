@@ -1,35 +1,64 @@
 const express = require('express');
 const cors = require('cors');
-const firebase = require('firebase/app');
+const admin = require('firebase-admin');
 
 //pnpm install express cors firebase
 //run command: node --env-file=.env .\index.cjs
 
-require('firebase/auth');
-require('firebase/database');
-
 app = express();
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 
-const firebaseConfig = {
-    apiKey: process.env.VITE_FIREBASE_apiKey,
-    authDomain: process.env.VITE_FIREBASE_authDomain,
-    projectId: process.env.VITE_FIREBASE_projectId,
-    storageBucket: process.env.VITE_FIREBASE_storageBucket,
-    messagingSenderId: process.env.VITE_FIREBASE_messagingSenderId,
-    appId: process.env.VITE_FIREBASE_appId
-};
+const serviceAccount = JSON.parse(
+    Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT).toString('utf8')
+);
 
-const firebaseApp = firebase.initializeApp(firebaseConfig);
+const firebaseApp = admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: process.env.FIREBASE_DATABASE_URL,
+});
 
-app.post('/api/inventory-check', (req, res) => {
-    const { userId } = req.body;
+const db = admin.firestore();
+const users = db.collection('users');
 
-    console.log('Received inventory check request for userId:', userId);
+app.post('/api/create-username', (req, res) => {
+    const { userId, username } = req.body;
 
-    res.status(200).json({ test: true });
+    if (!userId || !username) {
+        return res.status(400).json({ error: 'Missing userId or username in request body' });
+    }
+
+    //console.log(`Creating username for userId ${userId} with username ${username}`);
+
+    users.doc(userId).get()
+        .then((doc) => {
+            if (!doc.exists) {
+                //TODO check if username already exists (loop)
+
+
+
+                /* creation
+                users.doc(userId).set({ username })
+                    .then(() => {
+                        //console.log(`Username for userId ${userId} created successfully`);
+                        res.status(200).json({ message: 'Username created successfully' });
+                    })
+                    .catch((error) => {
+                        //console.error('Error creating username:', error);
+                        res.status(500).json({ error: 'Failed to create username' });
+                    });
+                    */
+            }
+            else {
+                return res.status(400).json({ error: 'UserId already exists' });
+            }
+        })
+        .catch((error) => {
+            //console.error('Error checking userId existence:', error);
+            return res.status(500).json({ error: 'Failed to check userId existence' });
+        });
 });
 
 app.get('/api/hello', (req, res) => {
@@ -40,5 +69,6 @@ app.get('/api/hello', (req, res) => {
 const port = 3333;
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
-    console.log('Firebase config:', firebaseConfig);
+    console.log('firebaseApp initialized:', !!firebaseApp);
+    console.log('serviceAccount loaded:', !!serviceAccount);
 })
