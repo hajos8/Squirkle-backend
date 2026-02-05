@@ -25,9 +25,9 @@ const firebaseConfig = {
 const firebaseApp = firebase.initializeApp(firebaseConfig);
 
 app.post('/api/inventory-check', (req, res) => {
-    const { auth_id } = req.body;
+    const { userId } = req.body;
 
-    console.log('Received inventory check request for auth_id:', auth_id);
+    console.log('Received inventory check request for userId:', userId);
 
     res.status(200).json({ test: true });
 });
