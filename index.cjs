@@ -1,9 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
+const dotenv = require('dotenv');
 
 //pnpm install express cors firebase
 //run command: node --env-file=.env .\index.cjs
+
+dotenv.config();
 
 app = express();
 
@@ -37,27 +40,28 @@ app.post('/api/create-username', (req, res) => {
             if (!doc.exists) {
                 //TODO check if username already exists (loop)
 
+                const q = query(users, where("username", "==", username));
 
+                getDocs(q)
+                    .then((snapshot) => {
+                        if (snapshot.empty) {
+                            users.doc(userId).set({ username })
+                                .then(() => {
+                                    res.status(200).json({ message: 'Username created successfully' });
+                                })
+                                .catch((error) => {
+                                    res.status(500).json({ error: 'Failed to create username' });
+                                });
 
-                /* creation
-                users.doc(userId).set({ username })
-                    .then(() => {
-                        //console.log(`Username for userId ${userId} created successfully`);
-                        res.status(200).json({ message: 'Username created successfully' });
+                        }
+                        else {
+                            return res.status(400).json({ error: 'Username already exists' });
+                        }
                     })
                     .catch((error) => {
-                        //console.error('Error creating username:', error);
-                        res.status(500).json({ error: 'Failed to create username' });
+                        return res.status(500).json({ error: 'Failed to check username existence' });
                     });
-                    */
             }
-            else {
-                return res.status(400).json({ error: 'UserId already exists' });
-            }
-        })
-        .catch((error) => {
-            //console.error('Error checking userId existence:', error);
-            return res.status(500).json({ error: 'Failed to check userId existence' });
         });
 });
 
