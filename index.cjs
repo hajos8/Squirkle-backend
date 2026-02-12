@@ -173,6 +173,17 @@ app.get('/api/get-item/:itemid', async (req, res) => {
     }
 });
 
+app.delete('/api/delete-item/:itemid', async (req, res) => {
+    const itemId = req.params.itemid;
+    try {
+        await items.doc(itemId).delete();
+        res.status(200).json({ message: "Item deleted successfully" });
+    } catch (error) {
+        console.log("Error deleting item:", error);
+        res.status(500).json({ error: "Failed to delete item" });
+    }
+});
+
 //app.
 
 app.get('/api/hello', (req, res) => {
