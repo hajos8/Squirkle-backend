@@ -25,7 +25,11 @@ const firebaseApp = admin.initializeApp({
 
 const db = admin.firestore();
 const users = db.collection('users');
+const items = db.collection('items');
 
+
+
+//username creation endpoint - TODO - change 200 to 201 and 400 to 409
 app.post('/api/create-username', (req, res) => {
     const { userId, username } = req.body;
 
@@ -70,6 +74,22 @@ app.post('/api/create-username', (req, res) => {
                 console.log(`UserId ${userId} already has a username`);
                 return res.status(400).json({ error: 'User already has a username' });
             }
+        });
+});
+
+//TODO 
+app.get('/api/get-all-items', (req, res) => {
+    items.get()
+        .then((snapshot) => {
+            const itemsArray = [];
+            snapshot.forEach((doc) => {
+                itemsArray.push({ id: doc.id, ...doc.data() });
+            });
+            res.status(200).json({ items: itemsArray });
+        })
+        .catch((error) => {
+            console.log("Error getting all items:", error);
+            res.status(500).json({ error: "Failed to retrieve all items" });
         });
 });
 
