@@ -47,10 +47,10 @@ app.post('/api/create-username', (req, res) => {
                         if (snapshot.empty) {
                             users.doc(userId).set({ username })
                                 .then(() => {
-                                    res.status(200).json({ message: 'Username created successfully' });
+                                    return res.status(200).json({ message: 'Username created successfully' });
                                 })
                                 .catch((error) => {
-                                    res.status(500).json({ error: 'Failed to create username' });
+                                    return res.status(500).json({ error: 'Failed to create username' });
                                 });
 
                         }
