@@ -29,6 +29,8 @@ const users = db.collection('users');
 app.post('/api/create-username', (req, res) => {
     const { userId, username } = req.body;
 
+    console.log('Received create-username request:', { userId, username });
+
     if (!userId || !username) {
         return res.status(400).json({ error: 'Missing userId or username in request body' });
     }
@@ -39,26 +41,33 @@ app.post('/api/create-username', (req, res) => {
         .then((doc) => {
             if (!doc.exists) {
                 //TODO check if username already exists (loop)
+                console.log(`Checking if username ${username} already exists`);
 
                 const q = query(users, where("username", "==", username));
+
+                console.log(`Querying for username ${username}`);
 
                 getDocs(q)
                     .then((snapshot) => {
                         if (snapshot.empty) {
                             users.doc(userId).set({ username })
                                 .then(() => {
+                                    console.log(`Username ${username} created for userId ${userId}`);
                                     return res.status(200).json({ message: 'Username created successfully' });
                                 })
                                 .catch((error) => {
+                                    console.log(`Failed to create username ${username} for userId ${userId}:`, error);
                                     return res.status(500).json({ error: 'Failed to create username' });
                                 });
 
                         }
                         else {
+                            console.log(`Username ${username} already exists`);
                             return res.status(400).json({ error: 'Username already exists' });
                         }
                     })
                     .catch((error) => {
+                        console.log(`Failed to check username existence for ${username}:`, error);
                         return res.status(500).json({ error: 'Failed to check username existence' });
                     });
             }
