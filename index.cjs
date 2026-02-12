@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 //pnpm install express cors firebase
 //run command: node --env-file=.env .\index.cjs
 
-//dotenv.config();
+dotenv.config();
 
 app = express();
 
