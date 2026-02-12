@@ -40,14 +40,9 @@ app.post('/api/create-username', (req, res) => {
     users.doc(userId).get()
         .then((doc) => {
             if (!doc.exists) {
-                //TODO check if username already exists (loop)
                 console.log(`Checking if username ${username} already exists`);
 
-                const q = query(users, where("username", "==", username));
-
-                console.log(`Querying for username ${username}`);
-
-                getDocs(q)
+                users.where("username", "==", username).get()
                     .then((snapshot) => {
                         if (snapshot.empty) {
                             users.doc(userId).set({ username })
@@ -70,6 +65,10 @@ app.post('/api/create-username', (req, res) => {
                         console.log(`Failed to check username existence for ${username}:`, error);
                         return res.status(500).json({ error: 'Failed to check username existence' });
                     });
+            }
+            else {
+                console.log(`UserId ${userId} already has a username`);
+                return res.status(400).json({ error: 'User already has a username' });
             }
         });
 });
