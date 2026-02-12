@@ -25,6 +25,54 @@ const firebaseApp = admin.initializeApp({
 
 const db = admin.firestore();
 const users = db.collection('users');
+const items = db.collection('items');
+
+app.get('/api/get-username-exists/:username', (req, res) => {
+    const username = req.params.username;
+
+    console.log('Received get-username-exists request for username:', username);
+
+    if (!username) {
+        return res.status(400).json({ error: 'Missing username in request parameters' });
+    }
+
+    users.where("username", "==", username).get()
+        .then((snapshot) => {
+            if (snapshot.empty) {
+                res.status(200).json({ exists: false });
+            }
+            else {
+                res.status(409).json({ exists: true });
+            }
+        })
+        .catch((error) => {
+            console.warn(`Error checking username existence for ${username}:`, error);
+            res.status(500).json({ error: 'Failed to check username existence' });
+        });
+});
+
+app.get('/api/get-username/:userid', (req, res) => {
+    const userId = req.params.userid;
+
+    console.log('Received get-username request for userId:', userId);
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    users.doc(userId).get()
+        .then((doc) => {
+            if (doc.exists) {
+                res.status(200).json({ username: doc.data().username });
+            } else {
+                res.status(404).json({ error: 'User not found' });
+            }
+        })
+        .catch((error) => {
+            console.warn(`Error getting username for userId ${userId}:`, error);
+            res.status(500).json({ error: 'Failed to retrieve username' });
+        });
+});
 
 app.post('/api/create-username', (req, res) => {
     const { userId, username } = req.body;
@@ -48,7 +96,7 @@ app.post('/api/create-username', (req, res) => {
                             users.doc(userId).set({ username })
                                 .then(() => {
                                     console.log(`Username ${username} created for userId ${userId}`);
-                                    return res.status(200).json({ message: 'Username created successfully' });
+                                    return res.status(201).json({ message: 'Username created successfully' });
                                 })
                                 .catch((error) => {
                                     console.log(`Failed to create username ${username} for userId ${userId}:`, error);
@@ -58,18 +106,34 @@ app.post('/api/create-username', (req, res) => {
                         }
                         else {
                             console.log(`Username ${username} already exists`);
-                            return res.status(400).json({ error: 'Username already exists' });
+                            return res.status(409).json({ error: 'Username already exists' });
                         }
                     })
                     .catch((error) => {
-                        console.log(`Failed to check username existence for ${username}:`, error);
+                        console.warn(`Failed to check username existence for ${username}:`, error);
                         return res.status(500).json({ error: 'Failed to check username existence' });
                     });
             }
             else {
                 console.log(`UserId ${userId} already has a username`);
-                return res.status(400).json({ error: 'User already has a username' });
+                return res.status(409).json({ error: 'User already has a username' });
             }
+        });
+});
+
+//TODO 
+app.get('/api/get-all-items', (req, res) => {
+    items.get()
+        .then((snapshot) => {
+            const itemsArray = [];
+            snapshot.forEach((doc) => {
+                itemsArray.push({ id: doc.id, ...doc.data() });
+            });
+            res.status(200).json({ items: itemsArray });
+        })
+        .catch((error) => {
+            console.log("Error getting all items:", error);
+            res.status(500).json({ error: "Failed to retrieve all items" });
         });
 });
 
