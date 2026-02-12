@@ -121,21 +121,59 @@ app.post('/api/create-username', (req, res) => {
         });
 });
 
-//TODO 
+
 app.get('/api/get-all-items', (req, res) => {
     items.get()
         .then((snapshot) => {
-            const itemsArray = [];
-            snapshot.forEach((doc) => {
-                itemsArray.push({ id: doc.id, ...doc.data() });
+            snapshot.forEach(async (doc) => {
+                const itemsArray = [];
+                console.log(`Item found for itemId ${doc.id}:`, doc.data());
+
+                const statsSnapshot = await doc.ref.collection('stats').get();
+                const statsArray = [];
+                statsSnapshot.forEach((statDoc) => {
+                    console.log(`Stat found for itemId ${doc.id}, statId ${statDoc.id}:`, statDoc.data());
+                    statsArray.push({ id: statDoc.id, ...statDoc.data() });
+                });
+
+                itemsArray.push({ id: doc.id, ...doc.data(), stats: statsArray[0] });
+
+                res.status(200).json({ items: itemsArray });
             });
-            res.status(200).json({ items: itemsArray });
         })
         .catch((error) => {
             console.log("Error getting all items:", error);
             res.status(500).json({ error: "Failed to retrieve all items" });
         });
 });
+
+app.get('/api/get-item/:itemid', async (req, res) => {
+    const itemId = req.params.itemid;
+
+    try {
+        const snapshot = await items.doc(itemId).get();
+
+        if (!snapshot.exists) {
+            console.warn(`Item found for itemId ${itemId}: not found`);
+            return res.status(404).json({ error: "Item not found" });
+        }
+
+        const statsSnapshot = await snapshot.ref.collection('stats').get();
+        const statsArray = [];
+        statsSnapshot.forEach((statDoc) => {
+            console.log(`Stat found for itemId ${itemId}, statId ${statDoc.id}:`, statDoc.data());
+            statsArray.push({ id: statDoc.id, ...statDoc.data() });
+        });
+
+        const itemData = { ...snapshot.data(), stats: statsArray[0] };
+        res.status(200).json({ item: itemData });
+    } catch (error) {
+        console.log("Error getting item:", error);
+        res.status(500).json({ error: "Failed to retrieve item" });
+    }
+});
+
+//app.
 
 app.get('/api/hello', (req, res) => {
     console.log('Received hello request');
