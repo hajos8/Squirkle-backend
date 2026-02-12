@@ -27,6 +27,15 @@ const db = admin.firestore();
 const users = db.collection('users');
 const items = db.collection('items');
 
+
+//user handler endpoints
+/* TODO
+    Add admin category for sensitive operations
+    Admin key or smth
+
+    Admin page endpoints for user management
+*/
+
 app.get('/api/get-username-exists/:username', (req, res) => {
     const username = req.params.username;
 
@@ -88,24 +97,24 @@ app.post('/api/create-username', (req, res) => {
     users.doc(userId).get()
         .then((doc) => {
             if (!doc.exists) {
-                console.log(`Checking if username ${username} already exists`);
+                //console.log(`Checking if username ${username} already exists`);
 
                 users.where("username", "==", username).get()
                     .then((snapshot) => {
                         if (snapshot.empty) {
                             users.doc(userId).set({ username })
                                 .then(() => {
-                                    console.log(`Username ${username} created for userId ${userId}`);
+                                    //console.log(`Username ${username} created for userId ${userId}`);
                                     return res.status(201).json({ message: 'Username created successfully' });
                                 })
                                 .catch((error) => {
-                                    console.log(`Failed to create username ${username} for userId ${userId}:`, error);
+                                    console.warn(`Failed to create username ${username} for userId ${userId}:`, error);
                                     return res.status(500).json({ error: 'Failed to create username' });
                                 });
 
                         }
                         else {
-                            console.log(`Username ${username} already exists`);
+                            console.warn(`Username ${username} already exists`);
                             return res.status(409).json({ error: 'Username already exists' });
                         }
                     })
@@ -115,19 +124,25 @@ app.post('/api/create-username', (req, res) => {
                     });
             }
             else {
-                console.log(`UserId ${userId} already has a username`);
+                console.warn(`UserId ${userId} already has a username`);
                 return res.status(409).json({ error: 'User already has a username' });
             }
         });
 });
 
 
+//item handler endpoints
+/* TODO
+    Require admin key fro sensitive operations
+    Add PATCH and POST
+*/
+
 app.get('/api/get-all-items', (req, res) => {
     items.get()
         .then((snapshot) => {
             snapshot.forEach(async (doc) => {
                 const itemsArray = [];
-                console.log(`Item found for itemId ${doc.id}:`, doc.data());
+                //console.log(`Item found for itemId ${doc.id}:`, doc.data());
 
                 const statsSnapshot = await doc.ref.collection('stats').get();
                 const statsArray = [];
@@ -142,7 +157,7 @@ app.get('/api/get-all-items', (req, res) => {
             });
         })
         .catch((error) => {
-            console.log("Error getting all items:", error);
+            console.warn("Error getting all items:", error);
             res.status(500).json({ error: "Failed to retrieve all items" });
         });
 });
@@ -161,14 +176,14 @@ app.get('/api/get-item/:itemid', async (req, res) => {
         const statsSnapshot = await snapshot.ref.collection('stats').get();
         const statsArray = [];
         statsSnapshot.forEach((statDoc) => {
-            console.log(`Stat found for itemId ${itemId}, statId ${statDoc.id}:`, statDoc.data());
+            //console.log(`Stat found for itemId ${itemId}, statId ${statDoc.id}:`, statDoc.data());
             statsArray.push({ id: statDoc.id, ...statDoc.data() });
         });
 
         const itemData = { ...snapshot.data(), stats: statsArray[0] };
         res.status(200).json({ item: itemData });
     } catch (error) {
-        console.log("Error getting item:", error);
+        console.warn("Error getting item:", error);
         res.status(500).json({ error: "Failed to retrieve item" });
     }
 });
@@ -179,12 +194,12 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
         await items.doc(itemId).delete();
         res.status(200).json({ message: "Item deleted successfully" });
     } catch (error) {
-        console.log("Error deleting item:", error);
+        console.warn("Error deleting item:", error);
         res.status(500).json({ error: "Failed to delete item" });
     }
 });
 
-//app.
+//test endpoint
 
 app.get('/api/hello', (req, res) => {
     console.log('Received hello request');
