@@ -131,7 +131,7 @@ app.post('/api/create-username', (req, res) => {
         });
 });
 
-app.get('/api/get-permissions/:userid', (req, res) => {
+app.get('/api/get-permissions/:userid', async (req, res) => {
     const userId = req.params.userid;
 
     console.log('Received get-permissions request for userId:', userId);
@@ -140,18 +140,12 @@ app.get('/api/get-permissions/:userid', (req, res) => {
         return res.status(400).json({ error: 'Missing userId in request parameters' });
     }
 
-    admins.doc(userId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                return res.status(200).json({ isAdmin: true });
-            } else {
-                return res.status(200).json({ isAdmin: false });
-            }
-        })
-        .catch((error) => {
-            console.warn(`Error checking permissions for userId ${userId}:`, error);
-            return res.status(500).json({ error: 'Failed to check permissions' });
-        });
+    if (await isAdmin(userId)) {
+        res.status(200).json({ isAdmin: true });
+    }
+    else {
+        res.status(200).json({ isAdmin: false });
+    }
 });
 
 //item handler endpoints
@@ -219,15 +213,9 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
         return res.status(400).json({ error: "Missing userId in request body" });
     }
 
-    admins.doc(userId).get()
-        .then((doc) => {
-            if (!doc.exists) {
-                return res.status(403).json({ error: "User does not have permission" });
-            }
-        })
-        .catch((error) => {
-            return res.status(500).json({ error: "Failed to check permissions" });
-        });
+    if (!await isAdmin(userId)) {
+        return res.status(403).json({ error: "User does not have permission" });
+    }
 
     try {
         await items.doc(itemId).delete();
@@ -237,6 +225,71 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
         res.status(500).json({ error: "Failed to delete item" });
     }
 });
+
+app.post('/api/create-item', async (req, res) => {
+    try {
+        const { userId, id, name, description, knockback, image, stats } = req.body;
+
+        if (!userId || !id || !name || !description || knockback === undefined || knockback === null || !image || !stats) {
+            return res.status(400).json({ error: "Missing required fields in request body" });
+        }
+
+        if (typeof knockback !== 'number') {
+            return res.status(400).json({ error: "Knockback must be a number" });
+        }
+
+        if (
+            stats.circleDamage === undefined ||
+            stats.squareDamage === undefined ||
+            stats.triangleDamage === undefined ||
+            stats.critChance === undefined ||
+            stats.critDamage === undefined ||
+            stats.metadata === undefined
+        ) {
+            return res.status(400).json({ error: "Missing required stats fields in request body" });
+        }
+
+        if (!await isAdmin(userId)) {
+            return res.status(403).json({ error: "User does not have permission" });
+        }
+
+        const itemRef = items.doc(id);
+        const existingItem = await itemRef.get();
+        if (existingItem.exists) {
+            return res.status(409).json({ error: "Item already exists" });
+        }
+
+        await itemRef.set({ name, description, knockback, image });
+
+        const statsRef = itemRef.collection('stats').doc(stats.id || 'stats');
+        await statsRef.set({
+            circleDamage: stats.circleDamage,
+            squareDamage: stats.squareDamage,
+            triangleDamage: stats.triangleDamage,
+            critChance: stats.critChance,
+            critDamage: stats.critDamage,
+            metadata: stats.metadata,
+        });
+
+        return res.status(201).json({ message: "Item created successfully", itemId: itemRef.id, statsId: statsRef.id });
+    } catch (error) {
+        console.warn("Error creating item:", error);
+        return res.status(500).json({ error: "Failed to create item" });
+    }
+});
+
+
+async function isAdmin(userId) {
+    return admins.doc(userId).get()
+        .then((adminDoc) => {
+            console.log(`Checking permissions for userId ${userId}:`, adminDoc.exists);
+            return adminDoc.exists;
+        })
+        .catch((error) => {
+            console.warn('Error checking permissions:', error);
+            throw new Error('Failed to check permissions');
+        });
+}
 
 //test endpoint
 
