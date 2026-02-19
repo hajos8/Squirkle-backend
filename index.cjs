@@ -25,6 +25,7 @@ const firebaseApp = admin.initializeApp({
 
 const db = admin.firestore();
 const users = db.collection('users');
+const admins = db.collection('admins');
 const items = db.collection('items');
 
 
@@ -130,6 +131,28 @@ app.post('/api/create-username', (req, res) => {
         });
 });
 
+app.get('/api/get-permissions/:userid', (req, res) => {
+    const userId = req.params.userid;
+
+    console.log('Received get-permissions request for userId:', userId);
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    admins.doc(userId).get()
+        .then((doc) => {
+            if (doc.exists) {
+                return res.status(200).json({ isAdmin: true });
+            } else {
+                return res.status(200).json({ isAdmin: false });
+            }
+        })
+        .catch((error) => {
+            console.warn(`Error checking permissions for userId ${userId}:`, error);
+            return res.status(500).json({ error: 'Failed to check permissions' });
+        });
+});
 
 //item handler endpoints
 /* TODO
@@ -190,6 +213,22 @@ app.get('/api/get-item/:itemid', async (req, res) => {
 
 app.delete('/api/delete-item/:itemid', async (req, res) => {
     const itemId = req.params.itemid;
+    const userId = req.body.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: "Missing userId in request body" });
+    }
+
+    admins.doc(userId).get()
+        .then((doc) => {
+            if (!doc.exists) {
+                return res.status(403).json({ error: "User does not have permission" });
+            }
+        })
+        .catch((error) => {
+            return res.status(500).json({ error: "Failed to check permissions" });
+        });
+
     try {
         await items.doc(itemId).delete();
         res.status(200).json({ message: "Item deleted successfully" });
