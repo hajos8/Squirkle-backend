@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const admin = require('firebase-admin');
 const dotenv = require('dotenv');
+const cloudinary = require('cloudinary').v2;
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
 //pnpm install express cors firebase
 //run command: node --env-file=.env .\index.cjs
@@ -13,6 +16,12 @@ app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const serviceAccount = JSON.parse(
     Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT).toString('utf8')
@@ -228,9 +237,9 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
 
 app.post('/api/create-item', async (req, res) => {
     try {
-        const { userId, id, name, description, knockback, image, stats } = req.body;
+        const { userId, id, name, description, knockback, imageUrl, stats } = req.body;
 
-        if (!userId || !id || !name || !description || knockback === undefined || knockback === null || !image || !stats) {
+        if (!userId || !id || !name || !description || knockback === undefined || knockback === null || !imageUrl || !stats) {
             return res.status(400).json({ error: "Missing required fields in request body" });
         }
 
@@ -259,7 +268,7 @@ app.post('/api/create-item', async (req, res) => {
             return res.status(409).json({ error: "Item already exists" });
         }
 
-        await itemRef.set({ name, description, knockback, image });
+        await itemRef.set({ name, description, knockback, imageUrl });
 
         const statsRef = itemRef.collection('stats').doc(stats.id || 'stats');
         await statsRef.set({
@@ -278,6 +287,60 @@ app.post('/api/create-item', async (req, res) => {
     }
 });
 
+
+app.post('/api/upload-image', upload.single('file'), async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const file = req.file;
+        if (!userId || !file || !file.originalname) {
+            return res.status(400).json({ error: 'Missing userId or file' });
+        }
+
+        if (!await isAdmin(userId)) {
+            return res.status(403).json({ error: 'User does not have permission' });
+        }
+
+        const uploadFromBuffer = () =>
+            new Promise((resolve, reject) => {
+                const stream = cloudinary.uploader.upload_stream(
+                    { public_id: file.originalname },
+                    (error, result) => {
+                        if (error) return reject(error);
+                        resolve(result);
+                    }
+                );
+                stream.end(file.buffer);
+            });
+
+        const result = await uploadFromBuffer();
+        return res.status(201).json({ url: result.secure_url });
+    }
+    catch (err) {
+        console.warn('Error uploading image:', err);
+        return res.status(500).json({ error: 'Failed to upload image' });
+    }
+});
+
+app.delete('/api/delete-image', async (req, res) => {
+    const { userId, filename } = req.body;
+
+    if (!userId || !filename) {
+        return res.status(400).json({ error: "Missing userId or filename in request body" });
+    }
+
+    if (!await isAdmin(userId)) {
+        return res.status(403).json({ error: "User does not have permission" });
+    }
+
+    try {
+        const result = await cloudinary.uploader.destroy(filename);
+        console.log(result);
+        res.status(200).json({ message: "Image deleted successfully", result });
+    } catch (error) {
+        console.warn("Error deleting image:", error);
+        res.status(500).json({ error: "Failed to delete image" });
+    }
+});
 
 async function isAdmin(userId) {
     return admins.doc(userId).get()
@@ -303,4 +366,5 @@ app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
     console.log('firebaseApp initialized:', !!firebaseApp);
     console.log('serviceAccount loaded:', !!serviceAccount);
+    console.log('Cloudinary configured:', !!cloudinary.config().cloud_name);
 })
