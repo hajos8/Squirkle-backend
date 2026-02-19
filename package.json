@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/hajos8/Squirkle-backend#readme",
   "dependencies": {
+    "cloudinary": "^2.9.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
