@@ -6,9 +6,6 @@ const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
 
-//pnpm install express cors firebase
-//run command: node --env-file=.env .\index.cjs
-
 dotenv.config();
 
 app = express();
@@ -37,12 +34,15 @@ const users = db.collection('users');
 const admins = db.collection('admins');
 const items = db.collection('items');
 
+//server time
+
+app.get('/api/server-time', (req, res) => {
+    const serverTime = Math.floor((Date.now() - new Date('2026-01-01').getTime()) / 1000);
+    res.status(200).json({ serverTime });
+});
 
 //user handler endpoints
 /* TODO
-    Add admin category for sensitive operations
-    Admin key or smth
-
     Admin page endpoints for user management
 */
 
@@ -159,8 +159,7 @@ app.get('/api/get-permissions/:userid', async (req, res) => {
 
 //item handler endpoints
 /* TODO
-    Require admin key fro sensitive operations
-    Add PATCH and POST
+    Add PATCH
 */
 
 app.get('/api/get-all-items', (req, res) => {
@@ -284,6 +283,66 @@ app.post('/api/create-item', async (req, res) => {
     } catch (error) {
         console.warn("Error creating item:", error);
         return res.status(500).json({ error: "Failed to create item" });
+    }
+});
+
+app.patch('/api/update-item/:itemid', async (req, res) => {
+    const itemId = req.params.itemid;
+    const { userId, name, description, knockback, imageUrl, stats } = req.body;
+
+    if (!await isAdmin(userId)) {
+        return res.status(403).json({ error: "User does not have permission" });
+    }
+
+    if (!name && !description && knockback === undefined && !imageUrl && !stats) {
+        return res.status(400).json({ error: "No fields to update provided in request body" });
+    }
+
+    try {
+        const itemRef = items.doc(itemId);
+        const itemDoc = await itemRef.get();
+
+        if (!itemDoc.exists) {
+            return res.status(404).json({ error: "Item not found" });
+        }
+
+        const itemUpdates = {};
+        if (name !== undefined) itemUpdates.name = name;
+        if (description !== undefined) itemUpdates.description = description;
+        if (knockback !== undefined) {
+            if (typeof knockback !== 'number') {
+                return res.status(400).json({ error: "Knockback must be a number" });
+            }
+            itemUpdates.knockback = knockback;
+        }
+        if (imageUrl !== undefined) itemUpdates.imageUrl = imageUrl;
+
+        if (Object.keys(itemUpdates).length > 0) {
+            await itemRef.update(itemUpdates);
+        }
+
+        if (stats !== undefined) {
+            const statsRef = itemRef.collection('stats').doc(stats.id || 'stats');
+            const statsUpdates = {};
+
+            if (stats.circleDamage !== undefined) statsUpdates.circleDamage = stats.circleDamage;
+            if (stats.squareDamage !== undefined) statsUpdates.squareDamage = stats.squareDamage;
+            if (stats.triangleDamage !== undefined) statsUpdates.triangleDamage = stats.triangleDamage;
+            if (stats.critChance !== undefined) statsUpdates.critChance = stats.critChance;
+            if (stats.critDamage !== undefined) statsUpdates.critDamage = stats.critDamage;
+            if (stats.metadata !== undefined) statsUpdates.metadata = stats.metadata;
+
+            if (Object.keys(statsUpdates).length === 0) {
+                return res.status(400).json({ error: "No stats fields provided to update" });
+            }
+
+            await statsRef.set(statsUpdates, { merge: true });
+        }
+
+        return res.status(200).json({ message: "Item updated successfully" });
+    } catch (error) {
+        console.warn("Error updating item:", error);
+        return res.status(500).json({ error: "Failed to update item" });
     }
 });
 
