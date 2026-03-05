@@ -4,6 +4,7 @@ const admin = require('firebase-admin');
 const dotenv = require('dotenv');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
+const crypto = require('crypto');
 const upload = multer({ storage: multer.memoryStorage() });
 
 dotenv.config();
@@ -34,12 +35,38 @@ const users = db.collection('users');
 const admins = db.collection('admins');
 const items = db.collection('items');
 
+
+const sessions = {};
+
 //server time
 
 app.get('/api/server-time', (req, res) => {
     const serverTime = Math.floor((Date.now() - new Date('2026-01-01').getTime()) / 1000);
     res.status(200).json({ serverTime });
 });
+
+//server sessions
+app.post('/api/create-session', (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing request body' });
+    }
+
+    const sessionId = generateSessionId(userId);
+    sessions[userId] = { sessionId };
+    console.log(sessions);
+    res.status(201).json({ sessionId });
+});
+
+function generateSessionId(userId) {
+    const timestamp = Date.now();
+
+    const randomSalt = crypto.randomBytes(16).toString('hex');
+    const dataString = `${userId}-${timestamp}-${randomSalt}`;
+
+    return crypto.createHash('sha256').update(dataString).digest('hex');
+}
 
 //user handler endpoints
 /* TODO
@@ -157,9 +184,76 @@ app.get('/api/get-permissions/:userid', async (req, res) => {
     }
 });
 
+app.get('/api/get-coins/:userid', (req, res) => {
+    const userId = req.params.userid;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    users.doc(userId).get()
+        .then((doc) => {
+            if (doc.exists) {
+                res.status(200).json({ coins: doc.data().coins || 0 });
+            } else {
+                res.status(404).json({ error: 'User not found' });
+            }
+        })
+        .catch((error) => {
+            console.warn(`Error getting coins for userId ${userId}:`, error);
+            res.status(500).json({ error: 'Failed to retrieve coins' });
+        });
+})
+
+//TODO make it secure 
+app.post('/api/update-coins', (req, res) => {
+    const sessionId = req.headers['authorization'];
+    const { userId, amount } = req.body;
+
+    console.log('Received update-coins request:', { userId, amount, sessionId });
+
+    if (!userId || amount === undefined) {
+        return res.status(400).json({ error: 'Missing userId or amount in request body' });
+    }
+
+    const sessionIdLocal = sessions[userId];
+    console.log(`Session ID for userId ${userId}:`, sessionIdLocal);
+    if (!sessionIdLocal || sessionIdLocal.sessionId !== sessionId) {
+        return res.status(403).json({ error: 'Unauthorized or invalid session' });
+    }
+
+    if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
+        return res.status(400).json({ error: 'Invalid coin amount. Must be between 1 and 1000.' });
+    }
+
+    const userRef = users.doc(userId);
+
+    userRef.get()
+        .then((doc) => {
+            if (doc.exists) {
+                userRef.update({
+                    coins: admin.firestore.FieldValue.increment(amount)
+                })
+                    .then(() => {
+                        res.status(200).json({ message: 'Coins updated successfully' });
+                    })
+                    .catch((error) => {
+                        console.warn(`Error updating coins for userId ${userId}:`, error);
+                        res.status(500).json({ error: 'Failed to update coins' });
+                    });
+            } else {
+                res.status(404).json({ error: 'User not found' });
+            }
+        })
+        .catch((error) => {
+            console.warn(`Error getting user for coin update ${userId}:`, error);
+            res.status(500).json({ error: 'Failed to retrieve user' });
+        });
+});
+
 //item handler endpoints
 /* TODO
-    Add PATCH
+    test PATCH
 */
 
 app.get('/api/get-all-items', (req, res) => {
