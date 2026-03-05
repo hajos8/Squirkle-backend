@@ -215,13 +215,11 @@ app.post('/api/update-coins', (req, res) => {
         return res.status(400).json({ error: 'Missing userId or amount in request body' });
     }
 
-    // 1. Verify Authentication: Check if session exists and matches the user
-    const session = sessions[sessionId];
-    if (!session || session.userId !== userId) {
+    const sessionIdLocal = sessions[userId];
+    if (!sessionIdLocal || sessionIdLocal !== sessionId) {
         return res.status(403).json({ error: 'Unauthorized or invalid session' });
     }
 
-    // 2. Validate Input: Prevent giving negative coins or absurdly huge amounts
     if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
         return res.status(400).json({ error: 'Invalid coin amount. Must be between 1 and 1000.' });
     }
@@ -231,7 +229,6 @@ app.post('/api/update-coins', (req, res) => {
     userRef.get()
         .then((doc) => {
             if (doc.exists) {
-                // 3. Atomic Increment: Safely add to the existing total in Firestore
                 userRef.update({
                     coins: admin.firestore.FieldValue.increment(amount)
                 })
@@ -254,7 +251,7 @@ app.post('/api/update-coins', (req, res) => {
 
 //item handler endpoints
 /* TODO
-    Add PATCH
+    test PATCH
 */
 
 app.get('/api/get-all-items', (req, res) => {
