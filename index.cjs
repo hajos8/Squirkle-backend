@@ -207,16 +207,18 @@ app.get('/api/get-coins/:userid', (req, res) => {
 
 //TODO make it secure 
 app.post('/api/update-coins', (req, res) => {
-    // We expect an authorization header with the session ID, and an 'amount' to add
     const sessionId = req.headers['authorization'];
     const { userId, amount } = req.body;
+
+    console.log('Received update-coins request:', { userId, amount, sessionId });
 
     if (!userId || amount === undefined) {
         return res.status(400).json({ error: 'Missing userId or amount in request body' });
     }
 
     const sessionIdLocal = sessions[userId];
-    if (!sessionIdLocal || sessionIdLocal !== sessionId) {
+    console.log(`Session ID for userId ${userId}:`, sessionIdLocal);
+    if (!sessionIdLocal || sessionIdLocal.sessionId !== sessionId) {
         return res.status(403).json({ error: 'Unauthorized or invalid session' });
     }
 
