@@ -157,6 +157,55 @@ app.get('/api/get-permissions/:userid', async (req, res) => {
     }
 });
 
+app.get('/api/get-coins/:userid', (req, res) => {
+    const userId = req.params.userid;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    users.doc(userId).get()
+        .then((doc) => {
+            if (doc.exists) {
+                res.status(200).json({ coins: doc.data().coins || 0 });
+            } else {
+                res.status(404).json({ error: 'User not found' });
+            }
+        })
+        .catch((error) => {
+            console.warn(`Error getting coins for userId ${userId}:`, error);
+            res.status(500).json({ error: 'Failed to retrieve coins' });
+        });
+})
+
+//TODO make it secure 
+app.post('/api/update-coins', (req, res) => {
+    const { userId, coins } = req.body;
+    if (!userId || coins === undefined) {
+        return res.status(400).json({ error: 'Missing userId or coins in request body' });
+    }
+
+    users.doc(userId).get()
+        .then((doc) => {
+            if (doc.exists) {
+                users.doc(userId).update({ coins: coins })
+                    .then(() => {
+                        res.status(200).json({ message: 'Coins updated successfully' });
+                    })
+                    .catch((error) => {
+                        console.warn(`Error updating coins for userId ${userId}:`, error);
+                        res.status(500).json({ error: 'Failed to update coins' });
+                    });
+            } else {
+                res.status(404).json({ error: 'User not found' });
+            }
+        })
+        .catch((error) => {
+            console.warn(`Error getting coins for userId ${userId}:`, error);
+            res.status(500).json({ error: 'Failed to retrieve coins' });
+        });
+});
+
 //item handler endpoints
 /* TODO
     Add PATCH
