@@ -4,6 +4,7 @@ const admin = require('firebase-admin');
 const dotenv = require('dotenv');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
+const crypto = require('crypto');
 const upload = multer({ storage: multer.memoryStorage() });
 
 dotenv.config();
@@ -34,12 +35,38 @@ const users = db.collection('users');
 const admins = db.collection('admins');
 const items = db.collection('items');
 
+
+const sessions = {};
+
 //server time
 
 app.get('/api/server-time', (req, res) => {
     const serverTime = Math.floor((Date.now() - new Date('2026-01-01').getTime()) / 1000);
     res.status(200).json({ serverTime });
 });
+
+//server sessions
+app.post('/api/create-session', (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing request body' });
+    }
+
+    const sessionId = generateSessionId(userId);
+    sessions[userId] = { sessionId };
+    console.log(sessions);
+    res.status(201).json({ sessionId });
+});
+
+function generateSessionId(userId) {
+    const timestamp = Date.now();
+
+    const randomSalt = crypto.randomBytes(16).toString('hex');
+    const dataString = `${userId}-${timestamp}-${randomSalt}`;
+
+    return crypto.createHash('sha256').update(dataString).digest('hex');
+}
 
 //user handler endpoints
 /* TODO
@@ -180,15 +207,34 @@ app.get('/api/get-coins/:userid', (req, res) => {
 
 //TODO make it secure 
 app.post('/api/update-coins', (req, res) => {
-    const { userId, coins } = req.body;
-    if (!userId || coins === undefined) {
-        return res.status(400).json({ error: 'Missing userId or coins in request body' });
+    // We expect an authorization header with the session ID, and an 'amount' to add
+    const sessionId = req.headers['authorization'];
+    const { userId, amount } = req.body;
+
+    if (!userId || amount === undefined) {
+        return res.status(400).json({ error: 'Missing userId or amount in request body' });
     }
 
-    users.doc(userId).get()
+    // 1. Verify Authentication: Check if session exists and matches the user
+    const session = sessions[sessionId];
+    if (!session || session.userId !== userId) {
+        return res.status(403).json({ error: 'Unauthorized or invalid session' });
+    }
+
+    // 2. Validate Input: Prevent giving negative coins or absurdly huge amounts
+    if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
+        return res.status(400).json({ error: 'Invalid coin amount. Must be between 1 and 1000.' });
+    }
+
+    const userRef = users.doc(userId);
+
+    userRef.get()
         .then((doc) => {
             if (doc.exists) {
-                users.doc(userId).update({ coins: coins })
+                // 3. Atomic Increment: Safely add to the existing total in Firestore
+                userRef.update({
+                    coins: admin.firestore.FieldValue.increment(amount)
+                })
                     .then(() => {
                         res.status(200).json({ message: 'Coins updated successfully' });
                     })
@@ -201,8 +247,8 @@ app.post('/api/update-coins', (req, res) => {
             }
         })
         .catch((error) => {
-            console.warn(`Error getting coins for userId ${userId}:`, error);
-            res.status(500).json({ error: 'Failed to retrieve coins' });
+            console.warn(`Error getting user for coin update ${userId}:`, error);
+            res.status(500).json({ error: 'Failed to retrieve user' });
         });
 });
 
