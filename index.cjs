@@ -21,6 +21,12 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+console.log('Cloudinary configuration:', {
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: !!process.env.CLOUDINARY_API_KEY,
+    api_secret: !!process.env.CLOUDINARY_API_SECRET,
+});
+
 const serviceAccount = JSON.parse(
     Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT).toString('utf8')
 );
@@ -35,9 +41,9 @@ const users = db.collection('users');
 const userItems = db.collection('user-items');
 const admins = db.collection('admins');
 const items = db.collection('items');
+const listings = db.collection('listings');
 
 const ALLOWED_ITEM_TYPES = ['weapon', 'armor'];
-
 
 const sessions = {};
 
@@ -49,6 +55,7 @@ app.get('/api/server-time', (req, res) => {
 });
 
 //server sessions
+
 app.post('/api/create-session', (req, res) => {
     const { userId } = req.body;
 
@@ -208,7 +215,8 @@ app.get('/api/get-coins/:userid', (req, res) => {
         });
 })
 
-//TODO make it secure 
+// coin management
+
 app.post('/api/update-coins', (req, res) => {
     const sessionId = req.headers['authorization'];
     const { userId, amount } = req.body;
@@ -254,7 +262,7 @@ app.post('/api/update-coins', (req, res) => {
         });
 });
 
-//item handler endpoints
+//base item handler endpoints
 /* TODO
     test PATCH
 */
@@ -481,6 +489,64 @@ app.post('/api/add-user-item', async (req, res) => {
         });
 });
 
+app.post('/api/equip-item', async (req, res) => {
+    const sessionId = req.headers['authorization'];
+    const { userId, userItemId, type } = req.body;
+
+    if (!userId || !userItemId || !type) {
+        return res.status(400).json({ error: 'Missing userId, userItemId or type in request body' });
+    }
+
+    const sessionIdLocal = sessions[userId];
+    if (!sessionIdLocal || sessionIdLocal.sessionId !== sessionId) {
+        return res.status(403).json({ error: 'Unauthorized or invalid session' });
+    }
+
+    if (!ALLOWED_ITEM_TYPES.includes(type)) {
+        return res.status(400).json({ error: 'Invalid type. Must be weapon or armor' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const inventory = userDoc.data().inventory || [];
+        if (!inventory.includes(userItemId)) {
+            return res.status(403).json({ error: 'User does not own the specified user item' });
+        }
+
+        const userItemDoc = await userItems.doc(userItemId).get();
+        if (!userItemDoc.exists) {
+            return res.status(404).json({ error: 'User item not found' });
+        }
+
+        const userItemData = userItemDoc.data();
+        if (userItemData.userId !== userId) {
+            return res.status(403).json({ error: 'User does not own the specified user item' });
+        }
+
+        const itemDoc = await items.doc(userItemData.itemId).get();
+        if (!itemDoc.exists) {
+            return res.status(404).json({ error: 'Base item not found for the provided user item' });
+        }
+
+        if (itemDoc.data().type !== type) {
+            return res.status(400).json({ error: 'Provided type does not match user item type' });
+        }
+
+        await users.doc(userId).collection('equipped').doc(type).set({
+            'user-item-id': userItemId,
+        }, { merge: true });
+
+        return res.status(200).json({ message: 'Item equipped successfully' });
+    } catch (error) {
+        console.warn(`Error equipping item ${userItemId} for user ${userId}:`, error);
+        return res.status(500).json({ error: 'Failed to equip item' });
+    }
+});
+
 //TODO test it and fix it
 app.get('/api/get-equipped-items/:userId', async (req, res) => {
     const userId = req.params.userId;
@@ -500,7 +566,7 @@ app.get('/api/get-equipped-items/:userId', async (req, res) => {
         const equippedItems = [];
 
         for (const doc of equippedSnapshot.docs) {
-            const slotName = doc.id; // e.g., 'armor', 'weapon'
+            const type = doc.id; // e.g., 'armor', 'weapon'
             const userItemId = doc.data()['user-item-id'];
 
             // Check if there is an item equipped and if the user actually owns it in their inventory
@@ -508,7 +574,7 @@ app.get('/api/get-equipped-items/:userId', async (req, res) => {
                 const userItemDoc = await userItems.doc(userItemId).get();
                 if (userItemDoc.exists) {
                     equippedItems.push({
-                        slot: slotName,
+                        type,
                         userItemId: userItemId,
                         ...userItemDoc.data()
                     });
@@ -525,7 +591,199 @@ app.get('/api/get-equipped-items/:userId', async (req, res) => {
     }
 });
 
+//inventory
 
+app.get('/api/get-inventory/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const inventory = userDoc.data().inventory || [];
+        const inventoryItems = [];
+
+        let promises = inventory.map(async (userItemId) => {
+            console.log(`Processing inventory item ${userItemId} for user ${userId}`);
+
+            const normalizedUserItemId = String(userItemId ?? '').trim();
+            if (normalizedUserItemId === '') {
+                console.warn(`Skipping invalid inventory item id for user ${userId}:`, userItemId);
+                return;
+            }
+
+            const userItemDoc = await userItems.doc(normalizedUserItemId).get();
+            if (userItemDoc.exists) {
+                const userItemData = userItemDoc.data();
+                const rawBaseItemId = userItemData.itemId ?? userItemData.baseItemId;
+                const normalizedItemId = String(rawBaseItemId ?? '').trim();
+
+                if (normalizedItemId === '') {
+                    console.warn(`Skipping user item with invalid base item id for user ${userId}:`, normalizedUserItemId);
+                    return;
+                }
+
+                const itemDoc = await items.doc(normalizedItemId).get();
+                if (itemDoc.exists) {
+                    inventoryItems.push({
+                        userItemId: normalizedUserItemId,
+                        itemId: normalizedItemId,
+                        name: itemDoc.data().name,
+                        description: itemDoc.data().description,
+                        type: itemDoc.data().type,
+                        knockback: itemDoc.data().knockback,
+                        imageUrl: itemDoc.data().imageUrl,
+                    });
+                }
+            }
+        });
+
+        await Promise.all(promises);
+
+
+        res.status(200).json({ items: inventoryItems });
+    }
+    catch (error) {
+        console.warn(`Error fetching inventory for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to fetch inventory' });
+    }
+});
+
+
+//listings - TODO test them
+
+app.get('/api/get-all-listings', async (req, res) => {
+    try {
+        const snapshot = await db.collection('listings').get();
+        const listingsArray = [];
+
+        for (const doc of snapshot.docs) {
+            const listingData = doc.data();
+            const userDoc = await users.doc(listingData.userId).get();
+            const itemDoc = await items.doc(listingData.itemId).get();
+            if (userDoc.exists && itemDoc.exists) {
+                listingsArray.push({
+                    id: doc.id,
+                    userId: listingData.userId,
+                    itemId: listingData.itemId,
+                    price: listingData.price,
+                    username: userDoc.data().username,
+                    itemName: itemDoc.data().name,
+                    itemImageUrl: itemDoc.data().imageUrl
+                });
+            }
+        }
+        res.status(200).json({ listings: listingsArray });
+    }
+    catch (error) {
+        console.warn(`Error fetching all listings:`, error);
+        res.status(500).json({ error: 'Failed to fetch all listings' });
+    }
+});
+
+app.get('/api/get-user-listings/:userId', async (req, res) => {
+    const userId = req.params.userId;
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const snapshot = await db.collection('listings').where('userId', '==', userId).get();
+        const listingsArray = [];
+
+        for (const doc of snapshot.docs) {
+            const listingData = doc.data();
+            const itemDoc = await items.doc(listingData.itemId).get();
+            if (itemDoc.exists) {
+                listingsArray.push({
+                    id: doc.id,
+                    userId: listingData.userId,
+                    itemId: listingData.itemId,
+                    price: listingData.price,
+                    itemName: itemDoc.data().name,
+                    itemImageUrl: itemDoc.data().imageUrl
+                });
+            }
+        }
+        res.status(200).json({ listings: listingsArray });
+    }
+    catch (error) {
+        console.warn(`Error fetching listings for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to fetch user listings' });
+    }
+});
+
+app.post('/api/create-listing', async (req, res) => {
+    const { userId, itemId, price } = req.body;
+
+    if (!userId || !itemId || price === undefined) {
+        return res.status(400).json({ error: 'Missing required fields in request body' });
+    }
+
+    if (price <= 0) {
+        return res.status(400).json({ error: 'Price must be greater than 0' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if the user owns the item
+        const inventory = userDoc.data().inventory || [];
+        if (!inventory.includes(itemId)) {
+            return res.status(403).json({ error: 'User does not own the specified item' });
+        }
+
+        // Create the listing
+        await listings.add({ userId, itemId, price });
+        res.status(201).json({ message: 'Listing created successfully' });
+    }
+    catch (error) {
+        console.warn(`Error creating listing for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to create listing' });
+    }
+});
+
+app.delete('/api/delete-listing/:listingId', async (req, res) => {
+    const { userId } = req.body;
+    const listingId = req.params.listingId;
+
+    if (!userId || !listingId) {
+        return res.status(400).json({ error: 'Missing userId or listingId in request body' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const listingDoc = await listings.doc(listingId).get();
+        if (!listingDoc.exists) {
+            return res.status(404).json({ error: 'Listing not found' });
+        }
+
+        if (listingDoc.data().userId !== userId) {
+            return res.status(403).json({ error: 'User is not the owner of the listing' });
+        }
+
+        await listings.doc(listingId).delete();
+        res.status(200).json({ message: 'Listing deleted successfully' });
+    }
+    catch (error) {
+        console.warn(`Error deleting listing ${listingId} for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to delete listing' });
+    }
+});
+
+//image handling
 
 app.post('/api/upload-image', upload.single('file'), async (req, res) => {
     try {
