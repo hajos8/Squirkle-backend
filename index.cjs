@@ -43,7 +43,7 @@ const admins = db.collection('admins');
 const items = db.collection('items');
 const listings = db.collection('listings');
 
-const ALLOWED_ITEM_TYPES = ['weapon', 'armor'];
+const ALLOWED_ITEM_TYPES = ['Weapon', 'Armor'];
 
 const sessions = {};
 
@@ -630,6 +630,12 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
 
                 const itemDoc = await items.doc(normalizedItemId).get();
                 if (itemDoc.exists) {
+                    const statsSnapshot = await itemDoc.ref.collection('stats').get();
+                    const statsArray = [];
+                    statsSnapshot.forEach((statDoc) => {
+                        statsArray.push({ id: statDoc.id, ...statDoc.data() });
+                    });
+
                     inventoryItems.push({
                         userItemId: normalizedUserItemId,
                         itemId: normalizedItemId,
@@ -638,6 +644,7 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
                         type: itemDoc.data().type,
                         knockback: itemDoc.data().knockback,
                         imageUrl: itemDoc.data().imageUrl,
+                        stats: statsArray[0] || null,
                     });
                 }
             }
