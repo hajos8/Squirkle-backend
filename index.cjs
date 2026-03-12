@@ -32,8 +32,11 @@ const firebaseApp = admin.initializeApp({
 
 const db = admin.firestore();
 const users = db.collection('users');
+const userItems = db.collection('user-items');
 const admins = db.collection('admins');
 const items = db.collection('items');
+
+const ALLOWED_ITEM_TYPES = ['weapon', 'armor'];
 
 
 const sessions = {};
@@ -330,10 +333,14 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
 
 app.post('/api/create-item', async (req, res) => {
     try {
-        const { userId, id, name, description, knockback, imageUrl, stats } = req.body;
+        const { userId, id, name, description, type, knockback, imageUrl, stats } = req.body;
 
-        if (!userId || !id || !name || !description || knockback === undefined || knockback === null || !imageUrl || !stats) {
+        if (!userId || !id || !name || !description || !type || knockback === undefined || knockback === null || !imageUrl || !stats) {
             return res.status(400).json({ error: "Missing required fields in request body" });
+        }
+
+        if (!ALLOWED_ITEM_TYPES.includes(type)) {
+            return res.status(400).json({ error: "Invalid type. Must be weapon or armor" });
         }
 
         if (typeof knockback !== 'number') {
@@ -361,7 +368,7 @@ app.post('/api/create-item', async (req, res) => {
             return res.status(409).json({ error: "Item already exists" });
         }
 
-        await itemRef.set({ name, description, knockback, imageUrl });
+        await itemRef.set({ name, description, type, knockback, imageUrl });
 
         const statsRef = itemRef.collection('stats').doc(stats.id || 'stats');
         await statsRef.set({
@@ -382,13 +389,13 @@ app.post('/api/create-item', async (req, res) => {
 
 app.patch('/api/update-item/:itemid', async (req, res) => {
     const itemId = req.params.itemid;
-    const { userId, name, description, knockback, imageUrl, stats } = req.body;
+    const { userId, name, description, type, knockback, imageUrl, stats } = req.body;
 
     if (!await isAdmin(userId)) {
         return res.status(403).json({ error: "User does not have permission" });
     }
 
-    if (!name && !description && knockback === undefined && !imageUrl && !stats) {
+    if (!name && !description && !type && knockback === undefined && !imageUrl && !stats) {
         return res.status(400).json({ error: "No fields to update provided in request body" });
     }
 
@@ -403,6 +410,12 @@ app.patch('/api/update-item/:itemid', async (req, res) => {
         const itemUpdates = {};
         if (name !== undefined) itemUpdates.name = name;
         if (description !== undefined) itemUpdates.description = description;
+        if (type !== undefined) {
+            if (!ALLOWED_ITEM_TYPES.includes(type)) {
+                return res.status(400).json({ error: "Invalid type. Must be weapon or armor" });
+            }
+            itemUpdates.type = type;
+        }
         if (knockback !== undefined) {
             if (typeof knockback !== 'number') {
                 return res.status(400).json({ error: "Knockback must be a number" });
@@ -439,6 +452,79 @@ app.patch('/api/update-item/:itemid', async (req, res) => {
         return res.status(500).json({ error: "Failed to update item" });
     }
 });
+
+//TODO CRUD for user items, equipped items, and inventory management
+
+app.post('/api/add-user-item', async (req, res) => {
+    const sessionId = req.headers['authorization'];
+    const { itemId } = req.body;
+
+    const userId = Object.keys(sessions).find(key => sessions[key].sessionId === sessionId);
+
+    console.log('Received add-user-item request:', { userId, itemId, sessionId });
+
+    if (!userId) {
+        return res.status(403).json({ error: 'Unauthorized or invalid session' });
+    }
+
+    if (itemId == null) {
+        return res.status(400).json({ error: 'Missing itemId in request body' });
+    }
+
+    userItems.add({ userId, itemId })
+        .then(() => {
+            res.status(201).json({ message: 'Item added to user successfully' });
+        })
+        .catch((error) => {
+            console.warn(`Error adding item ${itemId} to user ${userId}:`, error);
+            res.status(500).json({ error: 'Failed to add item to user' });
+        });
+});
+
+//TODO test it and fix it
+app.get('/api/get-equipped-items/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const inventory = userDoc.data().inventory || [];
+        const equippedSnapshot = await users.doc(userId).collection('equipped').get();
+        const equippedItems = [];
+
+        for (const doc of equippedSnapshot.docs) {
+            const slotName = doc.id; // e.g., 'armor', 'weapon'
+            const userItemId = doc.data()['user-item-id'];
+
+            // Check if there is an item equipped and if the user actually owns it in their inventory
+            if (userItemId && inventory.includes(userItemId)) {
+                const userItemDoc = await userItems.doc(userItemId).get();
+                if (userItemDoc.exists) {
+                    equippedItems.push({
+                        slot: slotName,
+                        userItemId: userItemId,
+                        ...userItemDoc.data()
+                    });
+                }
+            } else if (userItemId) {
+                console.warn(`User ${userId} has item ${userItemId} equipped but it is not in their inventory.`);
+            }
+        }
+
+        res.status(200).json({ items: equippedItems });
+    } catch (error) {
+        console.warn(`Error fetching equipped items for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to fetch equipped items' });
+    }
+});
+
 
 
 app.post('/api/upload-image', upload.single('file'), async (req, res) => {
