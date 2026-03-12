@@ -36,6 +36,8 @@ const userItems = db.collection('user-items');
 const admins = db.collection('admins');
 const items = db.collection('items');
 
+const ALLOWED_ITEM_TYPES = ['weapon', 'armor'];
+
 
 const sessions = {};
 
@@ -331,10 +333,14 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
 
 app.post('/api/create-item', async (req, res) => {
     try {
-        const { userId, id, name, description, knockback, imageUrl, stats } = req.body;
+        const { userId, id, name, description, type, knockback, imageUrl, stats } = req.body;
 
-        if (!userId || !id || !name || !description || knockback === undefined || knockback === null || !imageUrl || !stats) {
+        if (!userId || !id || !name || !description || !type || knockback === undefined || knockback === null || !imageUrl || !stats) {
             return res.status(400).json({ error: "Missing required fields in request body" });
+        }
+
+        if (!ALLOWED_ITEM_TYPES.includes(type)) {
+            return res.status(400).json({ error: "Invalid type. Must be weapon or armor" });
         }
 
         if (typeof knockback !== 'number') {
@@ -362,7 +368,7 @@ app.post('/api/create-item', async (req, res) => {
             return res.status(409).json({ error: "Item already exists" });
         }
 
-        await itemRef.set({ name, description, knockback, imageUrl });
+        await itemRef.set({ name, description, type, knockback, imageUrl });
 
         const statsRef = itemRef.collection('stats').doc(stats.id || 'stats');
         await statsRef.set({
@@ -383,13 +389,13 @@ app.post('/api/create-item', async (req, res) => {
 
 app.patch('/api/update-item/:itemid', async (req, res) => {
     const itemId = req.params.itemid;
-    const { userId, name, description, knockback, imageUrl, stats } = req.body;
+    const { userId, name, description, type, knockback, imageUrl, stats } = req.body;
 
     if (!await isAdmin(userId)) {
         return res.status(403).json({ error: "User does not have permission" });
     }
 
-    if (!name && !description && knockback === undefined && !imageUrl && !stats) {
+    if (!name && !description && !type && knockback === undefined && !imageUrl && !stats) {
         return res.status(400).json({ error: "No fields to update provided in request body" });
     }
 
@@ -404,6 +410,12 @@ app.patch('/api/update-item/:itemid', async (req, res) => {
         const itemUpdates = {};
         if (name !== undefined) itemUpdates.name = name;
         if (description !== undefined) itemUpdates.description = description;
+        if (type !== undefined) {
+            if (!ALLOWED_ITEM_TYPES.includes(type)) {
+                return res.status(400).json({ error: "Invalid type. Must be weapon or armor" });
+            }
+            itemUpdates.type = type;
+        }
         if (knockback !== undefined) {
             if (typeof knockback !== 'number') {
                 return res.status(400).json({ error: "Knockback must be a number" });
