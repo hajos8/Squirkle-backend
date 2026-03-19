@@ -493,7 +493,7 @@ app.post('/api/equip-item', async (req, res) => {
     const sessionId = req.headers['authorization'];
     const { userId, userItemId, type } = req.body;
 
-    if (!userId || !userItemId || !type) {
+    if (!userId || userItemId === undefined || !type) {
         return res.status(400).json({ error: 'Missing userId, userItemId or type in request body' });
     }
 
@@ -510,6 +510,11 @@ app.post('/api/equip-item', async (req, res) => {
         const userDoc = await users.doc(userId).get();
         if (!userDoc.exists) {
             return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (userItemId === null) {
+            await users.doc(userId).collection('equipped').doc(type).delete();
+            return res.status(200).json({ message: 'Item unequipped successfully' });
         }
 
         const inventory = userDoc.data().inventory || [];
