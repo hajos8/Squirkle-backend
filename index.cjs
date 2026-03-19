@@ -42,6 +42,7 @@ const userItems = db.collection('user-items');
 const admins = db.collection('admins');
 const items = db.collection('items');
 const listings = db.collection('listings');
+const metadatas = db.collection('metadatas');
 
 const ALLOWED_ITEM_TYPES = ['Weapon', 'Armor'];
 
@@ -76,6 +77,28 @@ function generateSessionId(userId) {
     const dataString = `${userId}-${timestamp}-${randomSalt}`;
 
     return crypto.createHash('sha256').update(dataString).digest('hex');
+}
+
+function normalizeMetadataId(rawMetadataId) {
+    return String(rawMetadataId ?? '').trim();
+}
+
+async function hydrateStatsWithMetadata(stats) {
+    if (!stats) {
+        return null;
+    }
+
+    const metadataId = normalizeMetadataId(stats.metadata);
+    if (metadataId === '') {
+        return { ...stats, metadata: null, metadataId: null };
+    }
+
+    const metadataDoc = await metadatas.doc(metadataId).get();
+    return {
+        ...stats,
+        metadataId,
+        metadata: metadataDoc.exists ? { id: metadataDoc.id, ...metadataDoc.data() } : null,
+    };
 }
 
 //user handler endpoints
@@ -263,9 +286,133 @@ app.post('/api/update-coins', (req, res) => {
 });
 
 //base item handler endpoints
-/* TODO
-    test PATCH
-*/
+
+
+//metadata handler endpoints
+
+app.get('/api/get-all-metadatas', async (req, res) => {
+    try {
+        const snapshot = await metadatas.get();
+        const metadatasArray = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+        return res.status(200).json({ metadatas: metadatasArray });
+    } catch (error) {
+        console.warn('Error getting all metadatas:', error);
+        return res.status(500).json({ error: 'Failed to retrieve all metadatas' });
+    }
+});
+
+app.get('/api/get-metadata/:metadataid', async (req, res) => {
+    const metadataId = normalizeMetadataId(req.params.metadataid);
+
+    if (!metadataId) {
+        return res.status(400).json({ error: 'Missing metadataId in request parameters' });
+    }
+
+    try {
+        const metadataDoc = await metadatas.doc(metadataId).get();
+
+        if (!metadataDoc.exists) {
+            return res.status(404).json({ error: 'Metadata not found' });
+        }
+
+        return res.status(200).json({ metadata: { id: metadataDoc.id, ...metadataDoc.data() } });
+    } catch (error) {
+        console.warn(`Error getting metadata ${metadataId}:`, error);
+        return res.status(500).json({ error: 'Failed to retrieve metadata' });
+    }
+});
+
+app.post('/api/create-metadata', async (req, res) => {
+    const { userId, id, title, description, backgroundColor, textColor } = req.body;
+
+    if (!userId || !id) {
+        return res.status(400).json({ error: 'Missing userId or id in request body' });
+    }
+
+    if (!title || !description || !backgroundColor || !textColor) {
+        return res.status(400).json({ error: 'Missing required metadata fields in request body' });
+    }
+
+    if (!await isAdmin(userId)) {
+        return res.status(403).json({ error: 'User does not have permission' });
+    }
+
+    try {
+        const metadataRef = metadatas.doc(id);
+        const existingMetadata = await metadataRef.get();
+
+        if (existingMetadata.exists) {
+            return res.status(409).json({ error: 'Metadata already exists' });
+        }
+
+        await metadataRef.set({ title, description, backgroundColor, textColor });
+        return res.status(201).json({ message: 'Metadata created successfully', metadataId: id });
+    } catch (error) {
+        console.warn(`Error creating metadata ${id}:`, error);
+        return res.status(500).json({ error: 'Failed to create metadata' });
+    }
+});
+
+app.patch('/api/update-metadata/:metadataid', async (req, res) => {
+    const metadataId = normalizeMetadataId(req.params.metadataid);
+    const { userId, title, description, backgroundColor, textColor } = req.body;
+
+    if (!userId || !metadataId) {
+        return res.status(400).json({ error: 'Missing userId or metadataId' });
+    }
+
+    if (Object.keys({ title, description, backgroundColor, textColor }).length === 0) {
+        return res.status(400).json({ error: 'No metadata fields to update provided in request body' });
+    }
+
+    if (!await isAdmin(userId)) {
+        return res.status(403).json({ error: 'User does not have permission' });
+    }
+
+    try {
+        const metadataRef = metadatas.doc(metadataId);
+        const metadataDoc = await metadataRef.get();
+
+        if (!metadataDoc.exists) {
+            return res.status(404).json({ error: 'Metadata not found' });
+        }
+
+        await metadataRef.update(metadataUpdates);
+        return res.status(200).json({ message: 'Metadata updated successfully' });
+    } catch (error) {
+        console.warn(`Error updating metadata ${metadataId}:`, error);
+        return res.status(500).json({ error: 'Failed to update metadata' });
+    }
+});
+
+app.delete('/api/delete-metadata/:metadataid', async (req, res) => {
+    const metadataId = normalizeMetadataId(req.params.metadataid);
+    const { userId } = req.body;
+
+    if (!userId || !metadataId) {
+        return res.status(400).json({ error: 'Missing userId or metadataId' });
+    }
+
+    if (!await isAdmin(userId)) {
+        return res.status(403).json({ error: 'User does not have permission' });
+    }
+
+    try {
+        const metadataRef = metadatas.doc(metadataId);
+        const metadataDoc = await metadataRef.get();
+
+        if (!metadataDoc.exists) {
+            return res.status(404).json({ error: 'Metadata not found' });
+        }
+
+        await metadataRef.delete();
+        return res.status(200).json({ message: 'Metadata deleted successfully' });
+    } catch (error) {
+        console.warn(`Error deleting metadata ${metadataId}:`, error);
+        return res.status(500).json({ error: 'Failed to delete metadata' });
+    }
+});
 
 app.get('/api/get-all-items', async (req, res) => {
     try {
@@ -279,7 +426,8 @@ app.get('/api/get-all-items', async (req, res) => {
                 statsArray.push({ id: statDoc.id, ...statDoc.data() });
             });
 
-            return { id: doc.id, ...doc.data(), stats: statsArray[0] || null };
+            const hydratedStats = await hydrateStatsWithMetadata(statsArray[0] || null);
+            return { id: doc.id, ...doc.data(), stats: hydratedStats };
         }));
 
         return res.status(200).json({ items: itemsArray });
@@ -307,7 +455,8 @@ app.get('/api/get-item/:itemid', async (req, res) => {
             statsArray.push({ id: statDoc.id, ...statDoc.data() });
         });
 
-        const itemData = { ...snapshot.data(), stats: statsArray[0] };
+        const hydratedStats = await hydrateStatsWithMetadata(statsArray[0] || null);
+        const itemData = { ...snapshot.data(), stats: hydratedStats };
         res.status(200).json({ item: itemData });
     } catch (error) {
         console.warn("Error getting item:", error);
@@ -658,6 +807,8 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
                         statsArray.push({ id: statDoc.id, ...statDoc.data() });
                     });
 
+                    const hydratedStats = await hydrateStatsWithMetadata(statsArray[0] || null);
+
                     inventoryItems.push({
                         userItemId: normalizedUserItemId,
                         itemId: normalizedItemId,
@@ -666,7 +817,7 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
                         type: itemDoc.data().type,
                         knockback: itemDoc.data().knockback,
                         imageUrl: itemDoc.data().imageUrl,
-                        stats: statsArray[0] || null,
+                        stats: hydratedStats,
                     });
                 }
             }
