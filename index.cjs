@@ -730,6 +730,36 @@ app.get('/api/get-user-listings/:userId', async (req, res) => {
     }
 });
 
+//TODO test
+app.get('/api/get-listed-user-item-ids/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const snapshot = await listings.where('userId', '==', userId).get();
+        const userItemIds = [];
+
+        snapshot.forEach((doc) => {
+            const rawUserItemId = doc.data().userItemId;
+            const normalizedUserItemId = String(rawUserItemId ?? '').trim();
+
+            if (normalizedUserItemId !== '') {
+                userItemIds.push(normalizedUserItemId);
+            }
+        });
+
+        const uniqueUserItemIds = [...new Set(userItemIds)];
+        return res.status(200).json({ userItemIds: uniqueUserItemIds });
+    }
+    catch (error) {
+        console.warn('Error fetching listed userItemIds:', error);
+        return res.status(500).json({ error: 'Failed to fetch listed userItemIds' });
+    }
+});
+
 app.post('/api/create-listing', async (req, res) => {
     const { userId, itemId, price } = req.body;
 
