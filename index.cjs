@@ -479,14 +479,34 @@ app.post('/api/add-user-item', async (req, res) => {
         return res.status(400).json({ error: 'Missing itemId in request body' });
     }
 
-    userItems.add({ userId, itemId })
-        .then(() => {
-            res.status(201).json({ message: 'Item added to user successfully' });
-        })
-        .catch((error) => {
-            console.warn(`Error adding item ${itemId} to user ${userId}:`, error);
-            res.status(500).json({ error: 'Failed to add item to user' });
+    try {
+        const userRef = users.doc(userId);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const itemDoc = await items.doc(itemId).get();
+        if (!itemDoc.exists) {
+            return res.status(404).json({ error: 'Base item not found' });
+        }
+
+        const userItemRef = userItems.doc();
+        await db.runTransaction(async (tx) => {
+            tx.set(userItemRef, { userId, itemId });
+            tx.update(userRef, {
+                inventory: admin.firestore.FieldValue.arrayUnion(userItemRef.id),
+            });
         });
+
+        return res.status(201).json({
+            message: 'Item added to user successfully',
+            userItemId: userItemRef.id,
+        });
+    } catch (error) {
+        console.warn(`Error adding item ${itemId} to user ${userId}:`, error);
+        return res.status(500).json({ error: 'Failed to add item to user' });
+    }
 });
 
 app.post('/api/equip-item', async (req, res) => {
