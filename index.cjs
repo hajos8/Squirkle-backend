@@ -487,9 +487,9 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
 
 app.post('/api/create-item', async (req, res) => {
     try {
-        const { userId, id, name, description, type, knockback, imageUrl, stats } = req.body;
+        const { userId, id, name, description, type, knockback, imageName, imageUrl, stats } = req.body;
 
-        if (!userId || !id || !name || !description || !type || knockback === undefined || knockback === null || !imageUrl || !stats) {
+        if (!userId || !id || !name || !description || !type || knockback === undefined || knockback === null || !imageName || !imageUrl || !stats) {
             return res.status(400).json({ error: "Missing required fields in request body" });
         }
 
@@ -522,7 +522,7 @@ app.post('/api/create-item', async (req, res) => {
             return res.status(409).json({ error: "Item already exists" });
         }
 
-        await itemRef.set({ name, description, type, knockback, imageUrl });
+        await itemRef.set({ name, description, type, knockback, imageName, imageUrl });
 
         const statsRef = itemRef.collection('stats').doc(stats.id || 'stats');
         await statsRef.set({
@@ -576,6 +576,7 @@ app.patch('/api/update-item/:itemid', async (req, res) => {
             }
             itemUpdates.knockback = knockback;
         }
+        if (imageName !== undefined) itemUpdates.imageName = imageName;
         if (imageUrl !== undefined) itemUpdates.imageUrl = imageUrl;
 
         if (Object.keys(itemUpdates).length > 0) {
