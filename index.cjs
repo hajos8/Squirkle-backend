@@ -267,29 +267,26 @@ app.post('/api/update-coins', (req, res) => {
     test PATCH
 */
 
-app.get('/api/get-all-items', (req, res) => {
-    items.get()
-        .then((snapshot) => {
-            snapshot.forEach(async (doc) => {
-                const itemsArray = [];
-                //console.log(`Item found for itemId ${doc.id}:`, doc.data());
+app.get('/api/get-all-items', async (req, res) => {
+    try {
+        const snapshot = await items.get();
 
-                const statsSnapshot = await doc.ref.collection('stats').get();
-                const statsArray = [];
-                statsSnapshot.forEach((statDoc) => {
-                    console.log(`Stat found for itemId ${doc.id}, statId ${statDoc.id}:`, statDoc.data());
-                    statsArray.push({ id: statDoc.id, ...statDoc.data() });
-                });
+        const itemsArray = await Promise.all(snapshot.docs.map(async (doc) => {
+            const statsSnapshot = await doc.ref.collection('stats').get();
+            const statsArray = [];
 
-                itemsArray.push({ id: doc.id, ...doc.data(), stats: statsArray[0] });
-
-                res.status(200).json({ items: itemsArray });
+            statsSnapshot.forEach((statDoc) => {
+                statsArray.push({ id: statDoc.id, ...statDoc.data() });
             });
-        })
-        .catch((error) => {
-            console.warn("Error getting all items:", error);
-            res.status(500).json({ error: "Failed to retrieve all items" });
-        });
+
+            return { id: doc.id, ...doc.data(), stats: statsArray[0] || null };
+        }));
+
+        return res.status(200).json({ items: itemsArray });
+    } catch (error) {
+        console.warn("Error getting all items:", error);
+        return res.status(500).json({ error: "Failed to retrieve all items" });
+    }
 });
 
 app.get('/api/get-item/:itemid', async (req, res) => {
