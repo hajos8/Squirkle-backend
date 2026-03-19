@@ -410,8 +410,8 @@ app.get('/api/get-all-items', async (req, res) => {
                 statsArray.push({ id: statDoc.id, ...statDoc.data() });
             });
 
-
-            return { id: doc.id, ...doc.data(), Stats: statsArray.length > 0 ? statsArray[0] : null };
+            +
+            return { id: doc.id, ...doc.data(), stats: statsArray.length > 0 ? statsArray[0] : null };
         }));
 
         return res.status(200).json({ items: itemsArray });
@@ -440,7 +440,7 @@ app.get('/api/get-item/:itemid', async (req, res) => {
         });
 
 
-        const itemData = { ...snapshot.data(), Stats: statsArray.length > 0 ? statsArray[0] : null };
+        const itemData = { ...snapshot.data(), stats: statsArray.length > 0 ? statsArray[0] : null };
         res.status(200).json({ item: itemData });
     } catch (error) {
         console.warn("Error getting item:", error);
