@@ -479,21 +479,41 @@ app.post('/api/add-user-item', async (req, res) => {
         return res.status(400).json({ error: 'Missing itemId in request body' });
     }
 
-    userItems.add({ userId, itemId })
-        .then(() => {
-            res.status(201).json({ message: 'Item added to user successfully' });
-        })
-        .catch((error) => {
-            console.warn(`Error adding item ${itemId} to user ${userId}:`, error);
-            res.status(500).json({ error: 'Failed to add item to user' });
+    try {
+        const userRef = users.doc(userId);
+        const userDoc = await userRef.get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const itemDoc = await items.doc(itemId).get();
+        if (!itemDoc.exists) {
+            return res.status(404).json({ error: 'Base item not found' });
+        }
+
+        const userItemRef = userItems.doc();
+        await db.runTransaction(async (tx) => {
+            tx.set(userItemRef, { userId, itemId });
+            tx.update(userRef, {
+                inventory: admin.firestore.FieldValue.arrayUnion(userItemRef.id),
+            });
         });
+
+        return res.status(201).json({
+            message: 'Item added to user successfully',
+            userItemId: userItemRef.id,
+        });
+    } catch (error) {
+        console.warn(`Error adding item ${itemId} to user ${userId}:`, error);
+        return res.status(500).json({ error: 'Failed to add item to user' });
+    }
 });
 
 app.post('/api/equip-item', async (req, res) => {
     const sessionId = req.headers['authorization'];
     const { userId, userItemId, type } = req.body;
 
-    if (!userId || !userItemId || !type) {
+    if (!userId || userItemId === undefined || !type) {
         return res.status(400).json({ error: 'Missing userId, userItemId or type in request body' });
     }
 
@@ -510,6 +530,11 @@ app.post('/api/equip-item', async (req, res) => {
         const userDoc = await users.doc(userId).get();
         if (!userDoc.exists) {
             return res.status(404).json({ error: 'User not found' });
+        }
+
+        if (userItemId === null) {
+            await users.doc(userId).collection('equipped').doc(type).delete();
+            return res.status(200).json({ message: 'Item unequipped successfully' });
         }
 
         const inventory = userDoc.data().inventory || [];
@@ -722,6 +747,36 @@ app.get('/api/get-user-listings/:userId', async (req, res) => {
     catch (error) {
         console.warn(`Error fetching listings for user ${userId}:`, error);
         res.status(500).json({ error: 'Failed to fetch user listings' });
+    }
+});
+
+//TODO test
+app.get('/api/get-listed-user-item-ids/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const snapshot = await listings.where('userId', '==', userId).get();
+        const userItemIds = [];
+
+        snapshot.forEach((doc) => {
+            const rawUserItemId = doc.data().userItemId;
+            const normalizedUserItemId = String(rawUserItemId ?? '').trim();
+
+            if (normalizedUserItemId !== '') {
+                userItemIds.push(normalizedUserItemId);
+            }
+        });
+
+        const uniqueUserItemIds = [...new Set(userItemIds)];
+        return res.status(200).json({ userItemIds: uniqueUserItemIds });
+    }
+    catch (error) {
+        console.warn('Error fetching listed userItemIds:', error);
+        return res.status(500).json({ error: 'Failed to fetch listed userItemIds' });
     }
 });
 
