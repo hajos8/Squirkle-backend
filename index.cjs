@@ -83,23 +83,7 @@ function normalizeMetadataId(rawMetadataId) {
     return String(rawMetadataId ?? '').trim();
 }
 
-async function hydrateStatsWithMetadata(stats) {
-    if (!stats) {
-        return null;
-    }
 
-    const metadataId = normalizeMetadataId(stats.metadata);
-    if (metadataId === '') {
-        return { ...stats, metadata: null, metadataId: null };
-    }
-
-    const metadataDoc = await metadatas.doc(metadataId).get();
-    return {
-        ...stats,
-        metadataId,
-        metadata: metadataDoc.exists ? { id: metadataDoc.id, ...metadataDoc.data() } : null,
-    };
-}
 
 //user handler endpoints
 /* TODO
@@ -426,8 +410,8 @@ app.get('/api/get-all-items', async (req, res) => {
                 statsArray.push({ id: statDoc.id, ...statDoc.data() });
             });
 
-            const hydratedStats = await hydrateStatsWithMetadata(statsArray[0] || null);
-            return { id: doc.id, ...doc.data(), stats: hydratedStats };
+
+            return { id: doc.id, ...doc.data(), Stats: statsArray.length > 0 ? statsArray[0] : null };
         }));
 
         return res.status(200).json({ items: itemsArray });
@@ -455,8 +439,8 @@ app.get('/api/get-item/:itemid', async (req, res) => {
             statsArray.push({ id: statDoc.id, ...statDoc.data() });
         });
 
-        const hydratedStats = await hydrateStatsWithMetadata(statsArray[0] || null);
-        const itemData = { ...snapshot.data(), stats: hydratedStats };
+
+        const itemData = { ...snapshot.data(), Stats: statsArray.length > 0 ? statsArray[0] : null };
         res.status(200).json({ item: itemData });
     } catch (error) {
         console.warn("Error getting item:", error);
@@ -487,9 +471,9 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
 
 app.post('/api/create-item', async (req, res) => {
     try {
-        const { userId, id, name, description, type, knockback, imageUrl, stats } = req.body;
+        const { userId, id, name, description, type, knockback, imageName, imageUrl, stats } = req.body;
 
-        if (!userId || !id || !name || !description || !type || knockback === undefined || knockback === null || !imageUrl || !stats) {
+        if (!userId || !id || !name || !description || !type || knockback === undefined || knockback === null || !imageName || !imageUrl || !stats) {
             return res.status(400).json({ error: "Missing required fields in request body" });
         }
 
@@ -522,7 +506,7 @@ app.post('/api/create-item', async (req, res) => {
             return res.status(409).json({ error: "Item already exists" });
         }
 
-        await itemRef.set({ name, description, type, knockback, imageUrl });
+        await itemRef.set({ name, description, type, knockback, imageName, imageUrl });
 
         const statsRef = itemRef.collection('stats').doc(stats.id || 'stats');
         await statsRef.set({
@@ -576,6 +560,7 @@ app.patch('/api/update-item/:itemid', async (req, res) => {
             }
             itemUpdates.knockback = knockback;
         }
+        if (imageName !== undefined) itemUpdates.imageName = imageName;
         if (imageUrl !== undefined) itemUpdates.imageUrl = imageUrl;
 
         if (Object.keys(itemUpdates).length > 0) {
