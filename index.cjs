@@ -325,9 +325,8 @@ app.get('/api/get-metadata/:metadataid', async (req, res) => {
 
 app.post('/api/create-metadata', async (req, res) => {
     const { userId, id, title, description, backgroundColor, textColor } = req.body;
-    const metadataId = normalizeMetadataId(id);
 
-    if (!userId || !metadataId) {
+    if (!userId || !id) {
         return res.status(400).json({ error: 'Missing userId or id in request body' });
     }
 
@@ -340,7 +339,7 @@ app.post('/api/create-metadata', async (req, res) => {
     }
 
     try {
-        const metadataRef = metadatas.doc(metadataId);
+        const metadataRef = metadatas.doc(id);
         const existingMetadata = await metadataRef.get();
 
         if (existingMetadata.exists) {
@@ -348,9 +347,9 @@ app.post('/api/create-metadata', async (req, res) => {
         }
 
         await metadataRef.set({ title, description, backgroundColor, textColor });
-        return res.status(201).json({ message: 'Metadata created successfully', metadataId });
+        return res.status(201).json({ message: 'Metadata created successfully', metadataId: id });
     } catch (error) {
-        console.warn(`Error creating metadata ${metadataId}:`, error);
+        console.warn(`Error creating metadata ${id}:`, error);
         return res.status(500).json({ error: 'Failed to create metadata' });
     }
 });
