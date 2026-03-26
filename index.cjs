@@ -822,9 +822,9 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
 //listings - TODO test them
 
 app.post('/api/create-listing', async (req, res) => {
-    const { userId, itemId, price } = req.body;
+    const { userId, itemId, userItemId, price } = req.body;
 
-    if (!userId || !itemId || !price) {
+    if (!userId || !itemId || !userItemId || !price) {
         return res.status(400).json({ error: 'Missing required fields in request body' });
     }
 
@@ -832,6 +832,7 @@ app.post('/api/create-listing', async (req, res) => {
         const listingDoc = {
             userId,
             itemId,
+            userItemId,
             price,
             active: true,
         };
