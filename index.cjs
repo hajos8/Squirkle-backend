@@ -526,13 +526,13 @@ app.post('/api/create-item', async (req, res) => {
 
 app.patch('/api/update-item/:itemid', async (req, res) => {
     const itemId = req.params.itemid;
-    const { userId, name, description, type, knockback, imageUrl, stats } = req.body;
+    const { userId, name, description, type, knockback, imageUrl, imageName, stats } = req.body;
 
     if (!await isAdmin(userId)) {
         return res.status(403).json({ error: "User does not have permission" });
     }
 
-    if (!name && !description && !type && knockback === undefined && !imageUrl && !stats) {
+    if (!name && !description && !type && knockback === undefined && !imageUrl && !imageName && !stats) {
         return res.status(400).json({ error: "No fields to update provided in request body" });
     }
 
