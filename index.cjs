@@ -821,6 +821,30 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
 
 //listings - TODO test them
 
+app.post('/api/create-listing', async (req, res) => {
+    const { userId, itemId, price } = req.body;
+
+    if (!userId || !itemId || !price) {
+        return res.status(400).json({ error: 'Missing required fields in request body' });
+    }
+
+    try {
+        const listingDoc = {
+            userId,
+            itemId,
+            price,
+            active: true,
+        };
+
+        const newListingRef = await db.collection('listings').add(listingDoc);
+        res.status(201).json({ id: newListingRef.id, ...listingDoc });
+    }
+    catch (error) {
+        console.warn(`Error creating listing:`, error);
+        res.status(500).json({ error: 'Failed to create listing' });
+    }
+});
+
 app.get('/api/get-all-listings', async (req, res) => {
     try {
         const snapshot = await db.collection('listings').get();
