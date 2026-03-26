@@ -410,7 +410,6 @@ app.get('/api/get-all-items', async (req, res) => {
                 statsArray.push({ id: statDoc.id, ...statDoc.data() });
             });
 
-            +
             return { id: doc.id, ...doc.data(), stats: statsArray.length > 0 ? statsArray[0] : null };
         }));
 
