@@ -761,56 +761,143 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
         const inventory = userDoc.data().inventory || [];
-        const inventoryItems = [];
 
-        let promises = inventory.map(async (userItemId) => {
-            console.log(`Processing inventory item ${userItemId} for user ${userId}`);
+        const normalizedInventoryIds = inventory
+            .map((userItemId) => String(userItemId ?? '').trim())
+            .filter((userItemId) => userItemId !== '');
 
-            const normalizedUserItemId = String(userItemId ?? '').trim();
-            if (normalizedUserItemId === '') {
-                console.warn(`Skipping invalid inventory item id for user ${userId}:`, userItemId);
+        console.log(`User ${userId} inventory:`, normalizedInventoryIds);
+
+        if (normalizedInventoryIds.length === 0) {
+            return res.status(200).json({ items: [] });
+        }
+
+        const uniqueInventoryUserItemIds = [...new Set(normalizedInventoryIds)];
+
+        const userItemRefs = uniqueInventoryUserItemIds.map((userItemId) => userItems.doc(userItemId));
+        const userItemDocs = await db.getAll(...userItemRefs);
+
+        const userItemToBaseItemCandidatesMap = new Map();
+        const baseItemIdSet = new Set();
+
+        console.log(`Fetched user item documents for user ${userId}:`, userItemDocs.map(doc => ({ id: doc.id, exists: doc.exists })));
+
+        userItemDocs.forEach((userItemDoc) => {
+            console.log(`Processing user item document for user ${userId}: userItemId ${userItemDoc.id}, exists: ${userItemDoc.exists}`);
+            if (!userItemDoc.exists) {
+                console.warn(`Inventory references missing user-item document for user ${userId}:`, userItemDoc.id);
                 return;
             }
 
-            const userItemDoc = await userItems.doc(normalizedUserItemId).get();
-            if (userItemDoc.exists) {
-                const userItemData = userItemDoc.data();
-                const rawBaseItemId = userItemData.itemId ?? userItemData.baseItemId;
-                const normalizedItemId = String(rawBaseItemId ?? '').trim();
+            const userItemData = userItemDoc.data();
+            const candidateBaseItemIds = [
+                userItemData.baseItemId,
+                userItemData['base-item-id'],
+                userItemData.itemId,
+                userItemData['item-id'],
+            ]
+                .map((value) => String(value ?? '').trim())
+                .filter((value) => value !== '');
 
-                if (normalizedItemId === '') {
-                    console.warn(`Skipping user item with invalid base item id for user ${userId}:`, normalizedUserItemId);
-                    return;
-                }
-
-                const itemDoc = await items.doc(normalizedItemId).get();
-                if (itemDoc.exists) {
-                    const statsSnapshot = await itemDoc.ref.collection('stats').get();
-                    const statsArray = [];
-                    statsSnapshot.forEach((statDoc) => {
-                        statsArray.push({ id: statDoc.id, ...statDoc.data() });
-                    });
-
-                    const hydratedStats = await hydrateStatsWithMetadata(statsArray[0] || null);
-
-                    inventoryItems.push({
-                        userItemId: normalizedUserItemId,
-                        itemId: normalizedItemId,
-                        name: itemDoc.data().name,
-                        description: itemDoc.data().description,
-                        type: itemDoc.data().type,
-                        knockback: itemDoc.data().knockback,
-                        imageUrl: itemDoc.data().imageUrl,
-                        stats: hydratedStats,
-                    });
-                }
+            if (candidateBaseItemIds.length === 0) {
+                console.warn(
+                    `Skipping user item with no usable base item reference for user ${userId}:`,
+                    { userItemId: userItemDoc.id, fields: userItemData }
+                );
+                return;
             }
+
+            const uniqueCandidates = [...new Set(candidateBaseItemIds)];
+            userItemToBaseItemCandidatesMap.set(userItemDoc.id, uniqueCandidates);
+
+            uniqueCandidates.forEach((candidateId) => {
+                baseItemIdSet.add(candidateId);
+            });
         });
 
-        await Promise.all(promises);
 
+        const uniqueBaseItemIds = [...baseItemIdSet];
+        if (uniqueBaseItemIds.length === 0) {
+            console.log(`Inventory response for user ${userId}: 0 items (no valid base items found).`);
+            return res.status(200).json({ items: [] });
+        }
 
-        res.status(200).json({ items: inventoryItems });
+        console.log(`Unique base item IDs for user ${userId}:`, uniqueBaseItemIds);
+
+        const baseItemRefs = uniqueBaseItemIds.map((baseItemId) => items.doc(baseItemId));
+        console.log(`Fetching base item documents for user ${userId} with references:`, baseItemRefs.map(ref => ref.path));
+        const baseItemDocs = await db.getAll(...baseItemRefs);
+        console.log(`Fetched base item documents for user ${userId}:`, baseItemDocs.map(doc => ({ id: doc.id, exists: doc.exists })));
+
+        console.log(`Fetched base item documents for user ${userId}:`, baseItemDocs.map(doc => ({ id: doc.id, exists: doc.exists })));
+
+        const baseItemById = new Map();
+        await Promise.all(baseItemDocs.map(async (itemDoc) => {
+            if (!itemDoc.exists) {
+                return;
+            }
+
+            const statsSnapshot = await itemDoc.ref.collection('stats').limit(1).get();
+            const firstStatDoc = statsSnapshot.docs[0];
+
+            const stats = firstStatDoc ? {
+                circleDamage: firstStatDoc.data().circleDamage,
+                squareDamage: firstStatDoc.data().squareDamage,
+                triangleDamage: firstStatDoc.data().triangleDamage,
+                critChance: firstStatDoc.data().critChance,
+                critDamage: firstStatDoc.data().critDamage,
+                metadata: firstStatDoc.data().metadata,
+            } : null;
+
+            baseItemById.set(itemDoc.id, {
+                name: itemDoc.data().name,
+                description: itemDoc.data().description,
+                type: itemDoc.data().type,
+                knockback: itemDoc.data().knockback,
+                imageUrl: itemDoc.data().imageUrl,
+                stats,
+            });
+        }));
+
+        // Keep response order consistent with the user's inventory ordering.
+        const inventoryItems = [];
+        normalizedInventoryIds.forEach((userItemId) => {
+            const candidateBaseItemIds = userItemToBaseItemCandidatesMap.get(userItemId) || [];
+            const resolvedBaseItemId = candidateBaseItemIds.find((candidateId) => baseItemById.has(candidateId));
+            const baseItem = resolvedBaseItemId ? baseItemById.get(resolvedBaseItemId) : null;
+
+            console.log(
+                `Mapped user item ${userItemId} using candidates ${JSON.stringify(candidateBaseItemIds)} to base item ${resolvedBaseItemId} for user ${userId}:`,
+                baseItem
+            );
+
+            if (!baseItem) {
+                console.warn(
+                    `No existing base item found for user item ${userItemId} (user ${userId}) with candidates:`,
+                    candidateBaseItemIds
+                );
+                return;
+            }
+
+            console.log(`Adding inventory item for user ${userId}: userItemId ${userItemId}, baseItemId ${resolvedBaseItemId}`);
+
+            inventoryItems.push({
+                userItemId,
+                itemId: resolvedBaseItemId,
+                name: baseItem.name,
+                description: baseItem.description,
+                type: baseItem.type,
+                knockback: baseItem.knockback,
+                imageUrl: baseItem.imageUrl,
+                stats: baseItem.stats,
+            });
+        });
+
+        console.log(
+            `Inventory response for user ${userId}: returned ${inventoryItems.length} item entries from ${normalizedInventoryIds.length} inventory references.`
+        );
+
+        return res.status(200).json({ items: inventoryItems });
     }
     catch (error) {
         console.warn(`Error fetching inventory for user ${userId}:`, error);
@@ -820,31 +907,6 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
 
 
 //listings - TODO test them
-
-app.post('/api/create-listing', async (req, res) => {
-    const { userId, itemId, userItemId, price } = req.body;
-
-    if (!userId || !itemId || !userItemId || !price) {
-        return res.status(400).json({ error: 'Missing required fields in request body' });
-    }
-
-    try {
-        const listingDoc = {
-            userId,
-            itemId,
-            userItemId,
-            price,
-            active: true,
-        };
-
-        const newListingRef = await db.collection('listings').add(listingDoc);
-        res.status(201).json({ id: newListingRef.id, ...listingDoc });
-    }
-    catch (error) {
-        console.warn(`Error creating listing:`, error);
-        res.status(500).json({ error: 'Failed to create listing' });
-    }
-});
 
 app.get('/api/get-all-listings', async (req, res) => {
     try {
@@ -938,9 +1000,9 @@ app.get('/api/get-listed-user-item-ids/:userId', async (req, res) => {
 });
 
 app.post('/api/create-listing', async (req, res) => {
-    const { userId, itemId, price } = req.body;
+    const { userId, itemId, userItemId, price } = req.body;
 
-    if (!userId || !itemId || price === undefined) {
+    if (!userId || !itemId || !userItemId || !price) {
         return res.status(400).json({ error: 'Missing required fields in request body' });
     }
 
@@ -956,12 +1018,12 @@ app.post('/api/create-listing', async (req, res) => {
 
         // Check if the user owns the item
         const inventory = userDoc.data().inventory || [];
-        if (!inventory.includes(itemId)) {
+        if (!inventory.includes(userItemId)) {
             return res.status(403).json({ error: 'User does not own the specified item' });
         }
 
         // Create the listing
-        await listings.add({ userId, itemId, price });
+        await listings.add({ userId, itemId, userItemId, price });
         res.status(201).json({ message: 'Listing created successfully' });
     }
     catch (error) {
