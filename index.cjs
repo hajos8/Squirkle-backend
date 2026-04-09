@@ -48,6 +48,8 @@ const ALLOWED_ITEM_TYPES = ['Weapon', 'Armor'];
 
 const sessions = {};
 
+const itemsInQueue = [];
+
 //server time
 
 app.get('/api/server-time', (req, res) => {
@@ -631,7 +633,7 @@ app.post('/api/add-user-item', async (req, res) => {
 
         const userItemRef = userItems.doc();
         await db.runTransaction(async (tx) => {
-            tx.set(userItemRef, { userId, itemId });
+            tx.set(userItemRef, { userId, baseItemId: itemId });
             tx.update(userRef, {
                 inventory: admin.firestore.FieldValue.arrayUnion(userItemRef.id),
             });
@@ -1038,7 +1040,7 @@ app.post('/api/create-listing', async (req, res) => {
         }
 
         // Create the listing
-        await listings.add({ userId, itemId, userItemId, price });
+        await listings.add({ userId, itemId, userItemId, price, active: true });
         res.status(201).json({ message: 'Listing created successfully' });
     }
     catch (error) {
@@ -1077,6 +1079,77 @@ app.delete('/api/delete-listing/:listingId', async (req, res) => {
         console.warn(`Error deleting listing ${listingId} for user ${userId}:`, error);
         res.status(500).json({ error: 'Failed to delete listing' });
     }
+});
+
+app.post('/api/buy-listing/:listingId', async (req, res) => {
+    const { userId } = req.body;
+    const listingId = req.params.listingId;
+
+    if (!userId || !listingId) {
+        return res.status(400).json({ error: 'Missing userId or listingId in request body' });
+    }
+
+    try {
+        const buyerDoc = await users.doc(userId).get();
+
+        if (!buyerDoc.exists) {
+            return res.status(404).json({ error: 'Buyer user not found' });
+        }
+
+        const listingDoc = await listings.doc(listingId).get();
+
+        if (!listingDoc.exists) {
+            return res.status(404).json({ error: 'Listing not found' });
+        }
+        const listingData = listingDoc.data();
+
+        if (!listingData.active) {
+            return res.status(400).json({ error: 'Listing is no longer active' });
+        }
+
+        const sellerDoc = await users.doc(listingData.userId).get();
+
+        if (!sellerDoc.exists) {
+            return res.status(404).json({ error: 'Seller user not found' });
+        }
+
+        const buyerData = buyerDoc.data();
+
+        if (buyerData.coins < listingData.price) {
+            return res.status(400).json({ error: 'Buyer does not have enough coins' });
+        }
+
+        if (itemsInQueue.includes(listingData.userItemId)) {
+            return res.status(400).json({ error: 'This item is currently in the process of being bought by another user. Please try again later.' });
+        }
+
+        itemsInQueue.push(listingData.userItemId);
+
+        //remove item from seller's inventory, add to buyer's inventory, transfer coins, and deactivate listing and add a sellerId to the listing
+        await db.runTransaction(async (tx) => {
+            //remove item from seller and add coins
+            tx.update(users.doc(listingData.userId), {
+                inventory: admin.firestore.FieldValue.arrayRemove(listingData.userItemId),
+                coins: admin.firestore.FieldValue.increment(listingData.price),
+            });
+            //add item to buyer and remove coins
+            tx.update(users.doc(userId), {
+                inventory: admin.firestore.FieldValue.arrayUnion(listingData.userItemId),
+                coins: admin.firestore.FieldValue.increment(-listingData.price),
+            });
+            //deactivate listing and add sellerId
+            tx.update(listings.doc(listingId), {
+                active: false,
+                sellerId: listingData.userId,
+            });
+        });
+
+    }
+    catch (error) {
+        console.warn(`Error buying listing ${listingId} for user ${userId}:`, error);
+        return res.status(500).json({ error: 'Failed to buy listing' });
+    }
+
 });
 
 //image handling
