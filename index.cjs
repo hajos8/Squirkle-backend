@@ -43,10 +43,9 @@ const admins = db.collection('admins');
 const items = db.collection('items');
 const listings = db.collection('listings');
 const metadatas = db.collection('metadatas');
+const sessions = db.collection('sessions');
 
 const ALLOWED_ITEM_TYPES = ['Weapon', 'Armor'];
-
-const sessions = {};
 
 const itemsInQueue = [];
 
@@ -59,7 +58,7 @@ app.get('/api/server-time', (req, res) => {
 
 //server sessions
 
-app.post('/api/create-session', (req, res) => {
+app.post('/api/create-session', async (req, res) => {
     const { userId } = req.body;
 
     if (!userId) {
@@ -67,9 +66,14 @@ app.post('/api/create-session', (req, res) => {
     }
 
     const sessionId = generateSessionId(userId);
-    sessions[userId] = { sessionId };
-    console.log(sessions);
-    res.status(201).json({ sessionId });
+    try {
+        await sessions.doc(userId).set({ sessionId });
+        console.log(`Created session for userId: ${userId}`);
+        res.status(201).json({ sessionId });
+    } catch (error) {
+        console.warn(`Error creating session for userId ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to create session' });
+    }
 });
 
 function generateSessionId(userId) {
@@ -226,8 +230,8 @@ app.get('/api/get-coins/:userid', (req, res) => {
 
 // coin management
 
-app.post('/api/update-coins', (req, res) => {
-    const sessionId = req.headers['authorization'];
+app.post('/api/update-coins/:sessionId', async (req, res) => {
+    const sessionId = req.params.sessionId;
     const { userId, amount } = req.body;
 
     console.log('Received update-coins request:', { userId, amount, sessionId });
@@ -236,39 +240,33 @@ app.post('/api/update-coins', (req, res) => {
         return res.status(400).json({ error: 'Missing userId or amount in request body' });
     }
 
-    const sessionIdLocal = sessions[userId];
-    console.log(`Session ID for userId ${userId}:`, sessionIdLocal);
-    if (!sessionIdLocal || sessionIdLocal.sessionId !== sessionId) {
-        return res.status(403).json({ error: 'Unauthorized or invalid session' });
+    try {
+        const sessionDoc = await sessions.doc(userId).get();
+        const sessionIdLocal = sessionDoc.exists ? sessionDoc.data() : null;
+        console.log(`Session ID for userId ${userId}:`, sessionIdLocal);
+        if (!sessionIdLocal || sessionIdLocal.sessionId !== sessionId) {
+            return res.status(403).json({ error: 'Unauthorized or invalid session' });
+        }
+
+        if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
+            return res.status(400).json({ error: 'Invalid coin amount. Must be between 1 and 1000.' });
+        }
+
+        const userRef = users.doc(userId);
+
+        const doc = await userRef.get();
+        if (doc.exists) {
+            await userRef.update({
+                coins: admin.firestore.FieldValue.increment(amount)
+            });
+            res.status(200).json({ message: 'Coins updated successfully' });
+        } else {
+            res.status(404).json({ error: 'User not found' });
+        }
+    } catch (error) {
+        console.warn(`Error updating coins for userId ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to process coin update' });
     }
-
-    if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
-        return res.status(400).json({ error: 'Invalid coin amount. Must be between 1 and 1000.' });
-    }
-
-    const userRef = users.doc(userId);
-
-    userRef.get()
-        .then((doc) => {
-            if (doc.exists) {
-                userRef.update({
-                    coins: admin.firestore.FieldValue.increment(amount)
-                })
-                    .then(() => {
-                        res.status(200).json({ message: 'Coins updated successfully' });
-                    })
-                    .catch((error) => {
-                        console.warn(`Error updating coins for userId ${userId}:`, error);
-                        res.status(500).json({ error: 'Failed to update coins' });
-                    });
-            } else {
-                res.status(404).json({ error: 'User not found' });
-            }
-        })
-        .catch((error) => {
-            console.warn(`Error getting user for coin update ${userId}:`, error);
-            res.status(500).json({ error: 'Failed to retrieve user' });
-        });
 });
 
 //base item handler endpoints
@@ -603,11 +601,20 @@ app.patch('/api/update-item/:itemid', async (req, res) => {
 
 //TODO CRUD for user items, equipped items, and inventory management
 
-app.post('/api/add-user-item', async (req, res) => {
-    const sessionId = req.headers['authorization'];
+app.post('/api/add-user-item/:sessionId', async (req, res) => {
+    const sessionId = req.params.sessionId;
     const { itemId } = req.body;
 
-    const userId = Object.keys(sessions).find(key => sessions[key].sessionId === sessionId);
+    let userId = null;
+    try {
+        const sessionsSnapshot = await sessions.where('sessionId', '==', sessionId).limit(1).get();
+        if (!sessionsSnapshot.empty) {
+            userId = sessionsSnapshot.docs[0].id;
+        }
+    } catch (error) {
+        console.warn('Error fetching session:', error);
+        return res.status(500).json({ error: 'Failed to authenticate session' });
+    }
 
     console.log('Received add-user-item request:', { userId, itemId, sessionId });
 
@@ -649,17 +656,23 @@ app.post('/api/add-user-item', async (req, res) => {
     }
 });
 
-app.post('/api/equip-item', async (req, res) => {
-    const sessionId = req.headers['authorization'];
+app.post('/api/equip-item/:sessionId', async (req, res) => {
+    const sessionId = req.params.sessionId;
     const { userId, userItemId, type } = req.body;
 
     if (!userId || userItemId === undefined || !type) {
         return res.status(400).json({ error: 'Missing userId, userItemId or type in request body' });
     }
 
-    const sessionIdLocal = sessions[userId];
-    if (!sessionIdLocal || sessionIdLocal.sessionId !== sessionId) {
-        return res.status(403).json({ error: 'Unauthorized or invalid session' });
+    try {
+        const sessionDoc = await sessions.doc(userId).get();
+        const sessionIdLocal = sessionDoc.exists ? sessionDoc.data() : null;
+        if (!sessionIdLocal || sessionIdLocal.sessionId !== sessionId) {
+            return res.status(403).json({ error: 'Unauthorized or invalid session' });
+        }
+    } catch (error) {
+        console.warn('Error fetching session:', error);
+        return res.status(500).json({ error: 'Failed to authenticate session' });
     }
 
     if (!ALLOWED_ITEM_TYPES.includes(type)) {
