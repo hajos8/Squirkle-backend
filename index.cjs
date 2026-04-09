@@ -1846,18 +1846,29 @@ app.get('/api/get-user-listings/:userId', async (req, res) => {
 
                 if (listingData.active === false) {
                     const buyerName = (await users.doc(listingData.buyerId).get()).data()?.username || 'Unknown Buyer';
-                }
 
-                listingsArray.push({
-                    id: doc.id,
-                    active: listingData.active,
-                    itemId: listingData.itemId,
-                    price: listingData.price,
-                    username: username,
-                    buyerName: listingData.active ? buyerName || null : null,
-                    itemName: itemDoc.data().name,
-                    itemImageUrl: itemDoc.data().imageUrl
-                });
+                    listingsArray.push({
+                        id: doc.id,
+                        active: listingData.active,
+                        itemId: listingData.itemId,
+                        price: listingData.price,
+                        username: username,
+                        itemName: itemDoc.data().name,
+                        itemImageUrl: itemDoc.data().imageUrl,
+                        buyerName: buyerName
+                    });
+                }
+                else {
+                    listingsArray.push({
+                        id: doc.id,
+                        active: listingData.active,
+                        itemId: listingData.itemId,
+                        price: listingData.price,
+                        username: username,
+                        itemName: itemDoc.data().name,
+                        itemImageUrl: itemDoc.data().imageUrl
+                    });
+                }
             }
         }
         res.status(200).json({ listings: listingsArray });
