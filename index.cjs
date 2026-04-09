@@ -1840,13 +1840,21 @@ app.get('/api/get-user-listings/:userId', async (req, res) => {
         for (const doc of snapshot.docs) {
             const listingData = doc.data();
             const itemDoc = await items.doc(listingData.itemId).get();
+
             if (itemDoc.exists) {
+                const username = (await users.doc(userId).get()).data()?.username || 'Unknown Seller';
+
+                if (listingData.active === false) {
+                    const buyerName = (await users.doc(listingData.buyerId).get()).data()?.username || 'Unknown Buyer';
+                }
+
                 listingsArray.push({
                     id: doc.id,
                     active: listingData.active,
-                    userId: listingData.userId,
                     itemId: listingData.itemId,
                     price: listingData.price,
+                    username: username,
+                    buyerName: listingData.active ? buyerName || null : null,
                     itemName: itemDoc.data().name,
                     itemImageUrl: itemDoc.data().imageUrl
                 });
@@ -2055,6 +2063,7 @@ app.delete('/api/delete-listing/:listingId', async (req, res) => {
  * @response {object} 200 - Confirms successful listing purchase.
  * @response {object} 400 - Missing request fields, inactive listing, insufficient coins, or item in queue.
  * @response {object} 404 - Buyer, seller, or listing not found.
+ * @response {object} 403 - Buyer is the owner of the listing.
  * @response {object} 500 - Failed to buy listing.
  * @description Purchases an active listing and transfers item ownership and coins.
  * Request (placeholder JSON):
@@ -2107,6 +2116,10 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
             return res.status(404).json({ error: 'Seller user not found' });
         }
 
+        if (listingData.userId === userId) {
+            return res.status(400).json({ error: 'User cannot buy their own listing' });
+        }
+
         const buyerData = buyerDoc.data();
 
         if (buyerData.coins < listingData.price) {
@@ -2119,7 +2132,7 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
 
         itemsInQueue.push(listingData.userItemId);
 
-        //remove item from seller's inventory, add to buyer's inventory, transfer coins, and deactivate listing and add a sellerId to the listing
+        //remove item from seller's inventory, add to buyer's inventory, transfer coins, and deactivate listing and add a buyerId to the listing
         await db.runTransaction(async (tx) => {
             //remove item from seller and add coins
             tx.update(users.doc(listingData.userId), {
@@ -2131,10 +2144,10 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
                 inventory: admin.firestore.FieldValue.arrayUnion(listingData.userItemId),
                 coins: admin.firestore.FieldValue.increment(-listingData.price),
             });
-            //deactivate listing and add sellerId
+            //deactivate listing and add buyerId
             tx.update(listings.doc(listingId), {
                 active: false,
-                sellerId: listingData.userId,
+                buyerId: userId,
             });
         });
 
