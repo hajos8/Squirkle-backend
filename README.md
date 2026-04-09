@@ -1,20 +1,17 @@
 # Squirkle Backend API
 
-Backend service for Squirkle, built with Express + Firebase Firestore.
+Backend service for Squirkle built with Express, Firebase Firestore, and Cloudinary.
 
-## Local base URL
+## Overview
 
-`http://localhost:3333`
+- Runtime: Node.js (CommonJS)
+- Framework: Express 5
+- Database: Firebase Firestore (via `firebase-admin`)
+- File storage: Cloudinary
+- Upload parser: Multer (memory storage)
+- Local default URL: `http://localhost:3333`
 
-## Tech stack
-
-- Node.js
-- Express 5
-- Firebase Admin SDK (Firestore)
-- Cloudinary
-- Multer
-
-## Setup
+## Quick Start
 
 1. Install dependencies:
 
@@ -22,7 +19,7 @@ Backend service for Squirkle, built with Express + Firebase Firestore.
 pnpm install
 ```
 
-2. Create a `.env` file with:
+2. Create `.env`:
 
 ```env
 FIREBASE_SERVICE_ACCOUNT={"type":"service_account",...}
@@ -33,252 +30,319 @@ CLOUDINARY_API_KEY=<cloudinary_api_key>
 CLOUDINARY_API_SECRET=<cloudinary_api_secret>
 ```
 
-Notes:
-- `FIREBASE_SERVICE_ACCOUNT` must be valid JSON in a single environment variable.
-- The app starts only if Firebase credentials are valid.
-
 3. Start server:
 
 ```bash
 node index.cjs
 ```
 
-## Authentication and authorization
-
-- Session token is created with `POST /api/create-session`.
-- Protected user endpoints expect `Authorization: <sessionId>` header.
-- Admin-only endpoints check if `admins/<userId>` exists in Firestore.
-
-## Core rules
-
-- Allowed item types are case-sensitive: `Weapon`, `Armor`.
-- Coin updates accept only positive numeric amounts from 1 to 1000.
-
-## API endpoints
-
-### Health and server
-
-#### `GET /api/hello`
-Returns test response.
-
-Success:
-```json
-{ "message": "Hello world!" }
-```
-
-#### `GET /api/server-time`
-Returns seconds elapsed since `2026-01-01`.
-
-Success:
-```json
-{ "serverTime": 12345 }
-```
-
-#### `POST /api/create-session`
-Body:
-```json
-{ "userId": "user_123" }
-```
-
-Success:
-```json
-{ "sessionId": "<sha256_hash>" }
-```
-
-### Users
-
-#### `GET /api/get-username-exists/:username`
-- `200`: `{ "exists": false }`
-- `409`: `{ "exists": true }`
-
-#### `GET /api/get-username/:userid`
-- `200`: `{ "username": "player1" }`
-- `404`: `{ "error": "User not found" }`
-
-#### `POST /api/create-username`
-Body:
-```json
-{ "userId": "user_123", "username": "player1" }
-```
-
-- `201`: created
-- `409`: username exists or user already has a username
-
-#### `GET /api/get-permissions/:userid`
-Success:
-```json
-{ "isAdmin": true }
-```
-
-#### `GET /api/get-coins/:userid`
-- `200`: `{ "coins": 0 }`
-- `404`: `{ "error": "User not found" }`
-
-#### `POST /api/update-coins`
-Headers:
-- `Authorization: <sessionId>`
-
-Body:
-```json
-{ "userId": "user_123", "amount": 50 }
-```
-
-- `200`: `{ "message": "Coins updated successfully" }`
-- `403`: invalid session
-- `400`: invalid amount
-
-### Metadata (admin)
-
-#### `GET /api/get-all-metadatas`
-Returns all metadata documents.
-
-#### `GET /api/get-metadata/:metadataid`
-- `200`: `{ "metadata": { "id": "...", ... } }`
-- `404`: metadata not found
-
-#### `POST /api/create-metadata`
-Body:
-```json
-{
-  "userId": "admin_user",
-  "id": "rare",
-  "title": "Rare",
-  "description": "Rare tier",
-  "backgroundColor": "#112233",
-  "textColor": "#ffffff"
-}
-```
-
-#### `PATCH /api/update-metadata/:metadataid`
-Intended to update any of:
-- `title`
-- `description`
-- `backgroundColor`
-- `textColor`
-
-#### `DELETE /api/delete-metadata/:metadataid`
-Deletes metadata document.
-
-### Items (admin)
-
-#### `GET /api/get-all-items`
-Returns all base items with first `stats` subdocument attached as `stats`.
-
-#### `GET /api/get-item/:itemid`
-- `200`: `{ "item": { ... } }`
-- `404`: item not found
-
-#### `POST /api/create-item`
-Body fields:
-- `userId`, `id`, `name`, `description`, `type`, `knockback`, `imageName`, `imageUrl`
-- `stats`: `circleDamage`, `squareDamage`, `triangleDamage`, `critChance`, `critDamage`, `metadata`
-
-#### `PATCH /api/update-item/:itemid`
-Updatable item fields:
-- `name`, `description`, `type`, `knockback`, `imageName`, `imageUrl`
-
-Optional `stats` object supports partial updates.
-
-#### `DELETE /api/delete-item/:itemid`
-Body:
-```json
-{ "userId": "admin_user" }
-```
-
-### User items and equipment
-
-#### `POST /api/add-user-item`
-Headers:
-- `Authorization: <sessionId>`
-
-Body:
-```json
-{ "itemId": "base_item_1" }
-```
-
-Creates a new document in `user-items` and appends its id to user inventory.
-
-#### `POST /api/equip-item`
-Headers:
-- `Authorization: <sessionId>`
-
-Body:
-```json
-{ "userId": "user_123", "userItemId": "abc123", "type": "Weapon" }
-```
-
 Notes:
-- Pass `userItemId: null` to unequip a type.
-- `type` must match the base item type and must be `Weapon` or `Armor`.
+- `FIREBASE_SERVICE_ACCOUNT` must be valid JSON encoded into one env var.
+- The current port is hardcoded to `3333`.
+- Available scripts:
+	- `pnpm start` runs `node index.cjs`
+	- `pnpm dev` runs `node --watch index.cjs`
 
-#### `GET /api/get-equipped-items/:userId`
-Returns currently equipped items that still exist in inventory.
+## Authentication and Authorization Model
 
-#### `GET /api/get-inventory/:userId`
-Returns hydrated inventory entries with base item data.
+This API uses two access patterns:
 
-### Listings
+1. Session-based actions
+- Create a session with `POST /api/create-session`.
+- Some endpoints require `:sessionId` in the URL and validate it against `sessions/<userId>.sessionId`.
 
-#### `GET /api/get-all-listings`
-Returns marketplace list with seller username and item preview data.
+2. Admin-gated actions
+- Admin checks are performed by verifying document existence in `admins/<userId>`.
+- Admin-only endpoints return `403` when the user is not authorized.
 
-#### `GET /api/get-user-listings/:userId`
-Returns listings created by one user.
+## API Conventions
 
-#### `GET /api/get-listed-user-item-ids/:userId`
-Returns unique `userItemId` values currently listed by the user.
-
-#### `POST /api/create-listing`
-Currently active handler expects:
+- Base prefix: `/api`
+- JSON for most endpoints
+- Error shape (typical):
 
 ```json
 {
-  "userId": "user_123",
-  "itemId": "base_item_1",
-  "userItemId": "user_item_1",
-  "price": 500
+	"error": "Human-readable error message"
 }
 ```
 
-Creates listing with `active: true`.
+- Some endpoints use explicit business-status codes:
+	- Username exists check returns `409` with `{ "exists": true }`
+	- Several validation failures return `400`
 
-#### `DELETE /api/delete-listing/:listingId`
-Body:
-```json
-{ "userId": "user_123" }
-```
+## Business Rules
 
-Only listing owner can delete.
+- Allowed item `type` values are case-sensitive: `Weapon`, `Armor`
+- Coin update amount constraints in `POST /api/update-coins/:sessionId`:
+	- Numeric
+	- Greater than `0`
+	- Less than or equal to `1000`
 
-### Image handling (admin)
+## Firestore Data Model
 
-#### `POST /api/upload-image`
-Content type:
-- `multipart/form-data`
-
-Form fields:
-- `userId`
-- `file`
-
-Uploads to Cloudinary with `public_id = original file name`.
-
-#### `DELETE /api/delete-image`
-Body:
-```json
-{ "userId": "admin_user", "filename": "file_public_id" }
-```
-
-## Firestore collections used
+Collections used:
 
 - `users`
-- `user-items`
+	- user profile fields (`username`, `coins`, `inventory`)
+	- equipped items subcollection: `users/<userId>/equipped/<type>`
+- `sessions`
+	- `sessions/<userId> { sessionId }`
 - `admins`
-- `items` (with `stats` subcollection)
+	- admin users by document ID
+- `items`
+	- base item data and nested stats subcollection `items/<itemId>/stats/<statsId>`
+- `user-items`
+	- per-user owned item instances
 - `listings`
+	- marketplace listings (`active`, `price`, `userId`, `itemId`, `userItemId`, etc.)
 - `metadatas`
+	- shared metadata entries for item styling/rarity-like data
 
-## Known issues in current code
+## Endpoint Reference
 
-- `POST /api/create-listing` is defined twice in code. The first definition handles requests.
-- `PATCH /api/update-metadata/:metadataid` currently references `metadataUpdates` without defining it.
-- `GET /api/get-inventory/:userId` calls `hydrateStatsWithMetadata`, which is not defined in the current file.
+### System
+
+#### `GET /api/hello`
+- Summary: Health check endpoint.
+- Responses: `200`
+
+#### `GET /api/server-time`
+- Summary: Get server time offset in seconds.
+- Responses: `200`
+
+### Sessions
+
+#### `POST /api/create-session`
+- Summary: Create a session token for a user.
+- Body:
+
+```json
+{
+	"userId": "user_123"
+}
+```
+
+- Responses: `201`, `400`, `500`
+
+### Users and Coins
+
+#### `GET /api/get-username-exists/:username`
+- Summary: Check username availability.
+- Params: `username`
+- Responses: `200`, `400`, `409`, `500`
+
+#### `GET /api/get-username/:userid`
+- Summary: Get username by user ID.
+- Params: `userid`
+- Responses: `200`, `400`, `404`, `500`
+
+#### `POST /api/create-username`
+- Summary: Create username for a user.
+- Body:
+
+```json
+{
+	"userId": "user_123",
+	"username": "player1"
+}
+```
+
+- Responses: `201`, `400`, `409`, `500`
+
+#### `GET /api/get-permissions/:userid`
+- Summary: Check whether a user is admin.
+- Params: `userid`
+- Responses: `200`, `400`, `500`
+
+#### `GET /api/get-coins/:userid`
+- Summary: Get coin balance for a user.
+- Params: `userid`
+- Responses: `200`, `400`, `404`, `500`
+
+#### `POST /api/update-coins/:sessionId`
+- Summary: Add coins for an authenticated user session.
+- Params: `sessionId`
+- Body:
+
+```json
+{
+	"userId": "user_123",
+	"amount": 50
+}
+```
+
+- Responses: `200`, `400`, `403`, `404`, `500`
+
+### Metadata
+
+#### `GET /api/get-all-metadatas`
+- Summary: List all metadata entries.
+- Responses: `200`, `500`
+
+#### `GET /api/get-metadata/:metadataid`
+- Summary: Get one metadata entry by ID.
+- Params: `metadataid`
+- Responses: `200`, `400`, `404`, `500`
+
+#### `POST /api/create-metadata`
+- Summary: Create metadata entry.
+- Authorization: Admin required
+- Responses: `201`, `400`, `403`, `409`, `500`
+
+#### `PATCH /api/update-metadata/:metadataid`
+- Summary: Update metadata entry fields.
+- Authorization: Admin required
+- Params: `metadataid`
+- Responses: `200`, `400`, `403`, `404`, `500`
+
+#### `DELETE /api/delete-metadata/:metadataid`
+- Summary: Delete metadata entry.
+- Authorization: Admin required
+- Params: `metadataid`
+- Responses: `200`, `400`, `403`, `404`, `500`
+
+### Items
+
+#### `GET /api/get-all-items`
+- Summary: List all base items.
+- Responses: `200`, `500`
+
+#### `GET /api/get-item/:itemid`
+- Summary: Get one base item by ID.
+- Params: `itemid`
+- Responses: `200`, `404`, `500`
+
+#### `POST /api/create-item`
+- Summary: Create base item and stats.
+- Authorization: Admin required
+- Responses: `201`, `400`, `403`, `409`, `500`
+
+#### `PATCH /api/update-item/:itemid`
+- Summary: Update base item and/or stats.
+- Authorization: Admin required
+- Params: `itemid`
+- Responses: `200`, `400`, `403`, `404`, `500`
+
+#### `DELETE /api/delete-item/:itemid`
+- Summary: Delete base item.
+- Authorization: Admin required
+- Params: `itemid`
+- Responses: `200`, `400`, `403`, `500`
+
+### Inventory and Equipment
+
+#### `POST /api/add-user-item/:sessionId`
+- Summary: Add a base item instance to user inventory.
+- Params: `sessionId`
+- Responses: `201`, `400`, `403`, `404`, `500`
+
+#### `POST /api/equip-item/:sessionId`
+- Summary: Equip or unequip a user item.
+- Params: `sessionId`
+- Responses: `200`, `400`, `403`, `404`, `500`
+
+#### `GET /api/get-equipped-items/:userId`
+- Summary: Get equipped user items.
+- Params: `userId`
+- Responses: `200`, `400`, `404`, `500`
+
+#### `GET /api/get-inventory/:userId`
+- Summary: Get resolved inventory for a user.
+- Params: `userId`
+- Responses: `200`, `400`, `404`, `500`
+
+### Listings and Marketplace
+
+#### `GET /api/get-all-active-listings`
+- Summary: List all active marketplace listings.
+- Responses: `200`, `500`
+
+#### `GET /api/get-all-inactive-listings`
+- Summary: List all inactive marketplace listings.
+- Responses: `200`, `500`
+
+#### `GET /api/get-user-listings/:userId`
+- Summary: List all listings created by a user.
+- Params: `userId`
+- Responses: `200`, `400`, `500`
+
+#### `GET /api/get-listed-user-item-ids/:userId`
+- Summary: Get listed user-item IDs for a user.
+- Params: `userId`
+- Responses: `200`, `400`, `500`
+
+#### `POST /api/create-listing`
+- Summary: Create marketplace listing.
+- Responses: `201`, `400`, `403`, `404`, `500`
+
+#### `DELETE /api/delete-listing/:listingId`
+- Summary: Delete marketplace listing.
+- Params: `listingId`
+- Responses: `200`, `400`, `403`, `404`, `500`
+
+#### `POST /api/buy-listing/:listingId`
+- Summary: Buy an active marketplace listing.
+- Params: `listingId`
+- Responses (documented): `200`, `400`, `404`, `500`
+
+### Images
+
+#### `POST /api/upload-image`
+- Summary: Upload image to Cloudinary.
+- Authorization: Admin required
+- Content-Type: `multipart/form-data`
+- Form fields:
+	- `userId` (text)
+	- `file` (binary)
+- Responses: `201`, `400`, `403`, `500`
+
+#### `DELETE /api/delete-image`
+- Summary: Delete image from Cloudinary.
+- Authorization: Admin required
+- Body:
+
+```json
+{
+	"userId": "admin_1",
+	"filename": "sword.png"
+}
+```
+
+- Responses: `200`, `400`, `403`, `500`
+
+## Example Request Flow
+
+Typical player flow:
+
+1. Create session
+	 - `POST /api/create-session`
+2. Ensure username exists
+	 - `POST /api/create-username`
+3. Query inventory state
+	 - `GET /api/get-inventory/:userId`
+4. Perform authenticated mutation
+	 - `POST /api/add-user-item/:sessionId`
+	 - `POST /api/equip-item/:sessionId`
+
+Typical admin flow:
+
+1. Confirm admin permission
+	 - `GET /api/get-permissions/:userid`
+2. Upload item image
+	 - `POST /api/upload-image`
+3. Create metadata and base item
+	 - `POST /api/create-metadata`
+	 - `POST /api/create-item`
+
+## Operational Notes
+
+- CORS is enabled globally.
+- Request payload parsing supports JSON and URL-encoded bodies.
+- Cloudinary and Firebase configuration values are logged at startup (without exposing secret values directly).
+
+## Future Improvements (Optional)
+
+- Add request validation middleware to centralize schema checks
+- Add automated tests and an OpenAPI export
+- Add endpoint rate limiting and structured logging
