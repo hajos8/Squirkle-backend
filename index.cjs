@@ -918,9 +918,45 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
 
 //listings - TODO test them
 
-app.get('/api/get-all-listings', async (req, res) => {
+app.get('/api/get-all-active-listings', async (req, res) => {
     try {
-        const snapshot = await db.collection('listings').get();
+        const snapshot = await db.collection('listings').where('active', '==', true).get();
+        const listingsArray = [];
+
+        console.log(`Fetched ${snapshot.size} listings from database.`);
+
+        for (const doc of snapshot.docs) {
+            const listingData = doc.data();
+            const userDoc = await users.doc(listingData.userId).get();
+            const itemDoc = await items.doc(listingData.itemId).get();
+
+            console.log(`Processing listing ${doc.id}: userId ${listingData.userId}, itemId ${listingData.itemId}`);
+            console.log(`User document for listing ${doc.id}: exists ${userDoc.exists}`);
+            console.log(`Item document for listing ${doc.id}: exists ${itemDoc.exists}`);
+
+            if (userDoc.exists && itemDoc.exists) {
+                listingsArray.push({
+                    id: doc.id,
+                    userId: listingData.userId,
+                    itemId: listingData.itemId,
+                    price: listingData.price,
+                    username: userDoc.data().username,
+                    itemName: itemDoc.data().name,
+                    itemImageUrl: itemDoc.data().imageUrl
+                });
+            }
+        }
+        res.status(200).json({ listings: listingsArray });
+    }
+    catch (error) {
+        console.warn(`Error fetching all listings:`, error);
+        res.status(500).json({ error: 'Failed to fetch all listings' });
+    }
+});
+
+app.get('/api/get-all-inactive-listings', async (req, res) => {
+    try {
+        const snapshot = await db.collection('listings').where('active', '==', false).get();
         const listingsArray = [];
 
         console.log(`Fetched ${snapshot.size} listings from database.`);
