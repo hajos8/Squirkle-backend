@@ -362,7 +362,15 @@ app.patch('/api/update-metadata/:metadataid', async (req, res) => {
             return res.status(404).json({ error: 'Metadata not found' });
         }
 
+        const metadataUpdates = {};
+
+        if (title !== undefined) metadataUpdates.title = title;
+        if (description !== undefined) metadataUpdates.description = description;
+        if (backgroundColor !== undefined) metadataUpdates.backgroundColor = backgroundColor;
+        if (textColor !== undefined) metadataUpdates.textColor = textColor;
+
         await metadataRef.update(metadataUpdates);
+
         return res.status(200).json({ message: 'Metadata updated successfully' });
     } catch (error) {
         console.warn(`Error updating metadata ${metadataId}:`, error);
@@ -913,10 +921,17 @@ app.get('/api/get-all-listings', async (req, res) => {
         const snapshot = await db.collection('listings').get();
         const listingsArray = [];
 
+        console.log(`Fetched ${snapshot.size} listings from database.`);
+
         for (const doc of snapshot.docs) {
             const listingData = doc.data();
             const userDoc = await users.doc(listingData.userId).get();
             const itemDoc = await items.doc(listingData.itemId).get();
+
+            console.log(`Processing listing ${doc.id}: userId ${listingData.userId}, itemId ${listingData.itemId}`);
+            console.log(`User document for listing ${doc.id}: exists ${userDoc.exists}`);
+            console.log(`Item document for listing ${doc.id}: exists ${itemDoc.exists}`);
+
             if (userDoc.exists && itemDoc.exists) {
                 listingsArray.push({
                     id: doc.id,
