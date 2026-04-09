@@ -1819,6 +1819,7 @@ app.get('/api/get-all-inactive-listings', async (req, res) => {
  *       "userId": "seller_1",
  *       "itemId": "sword_1",
  *       "price": 500,
+ *       "active": true,
  *       "itemName": "Iron Sword",
  *       "itemImageUrl": "https://example.com/sword.png"
  *     }
@@ -1842,6 +1843,7 @@ app.get('/api/get-user-listings/:userId', async (req, res) => {
             if (itemDoc.exists) {
                 listingsArray.push({
                     id: doc.id,
+                    active: listingData.active,
                     userId: listingData.userId,
                     itemId: listingData.itemId,
                     price: listingData.price,
