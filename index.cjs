@@ -673,7 +673,13 @@ app.post('/api/equip-item', async (req, res) => {
         }
 
         if (userItemId === null) {
-            await users.doc(userId).collection('equipped').doc(type).delete();
+            //create equipped subcollection if it doesn't exist and set the equipped item for the type
+
+            if (!(await users.doc(userId).collection('equipped').doc(type).get()).exists) {
+                await users.doc(userId).collection('equipped').doc(type).set({});
+            }
+
+            await users.doc(userId).collection('equipped').doc(type).set({ userItemId: null }, { merge: true });
             return res.status(200).json({ message: 'Item unequipped successfully' });
         }
 
@@ -701,9 +707,13 @@ app.post('/api/equip-item', async (req, res) => {
             return res.status(400).json({ error: 'Provided type does not match user item type' });
         }
 
-        await users.doc(userId).collection('equipped').doc(type).set({
-            'user-item-id': userItemId,
-        }, { merge: true });
+        //create equipped subcollection if it doesn't exist and set the equipped item for the type
+
+        if (!(await users.doc(userId).collection('equipped').doc(type).get()).exists) {
+            await users.doc(userId).collection('equipped').doc(type).set({});
+        }
+
+        await users.doc(userId).collection('equipped').doc(type).set({ userItemId }, { merge: true });
 
         return res.status(200).json({ message: 'Item equipped successfully' });
     } catch (error) {
