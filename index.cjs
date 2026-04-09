@@ -673,7 +673,13 @@ app.post('/api/equip-item', async (req, res) => {
         }
 
         if (userItemId === null) {
-            await users.doc(userId).collection('equipped').doc(type).delete();
+            //create equipped subcollection if it doesn't exist and set the equipped item for the type
+
+            if (!(await users.doc(userId).collection('equipped').doc(type).get()).exists) {
+                await users.doc(userId).collection('equipped').doc(type).set({});
+            }
+
+            await users.doc(userId).collection('equipped').doc(type).set({ userItemId: null }, { merge: true });
             return res.status(200).json({ message: 'Item unequipped successfully' });
         }
 
