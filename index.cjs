@@ -698,7 +698,7 @@ app.post('/api/equip-item', async (req, res) => {
             return res.status(403).json({ error: 'User does not own the specified user item' });
         }
 
-        const itemDoc = await items.doc(userItemData.itemId).get();
+        const itemDoc = await items.doc(userItemData.baseItemId).get();
         if (!itemDoc.exists) {
             return res.status(404).json({ error: 'Base item not found for the provided user item' });
         }
