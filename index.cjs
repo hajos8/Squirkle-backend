@@ -742,7 +742,7 @@ app.get('/api/get-equipped-items/:userId', async (req, res) => {
 
         for (const doc of equippedSnapshot.docs) {
             const type = doc.id; // e.g., 'armor', 'weapon'
-            const userItemId = doc.data()['user-item-id'];
+            const userItemId = doc.data()['userItemId'];
 
             // Check if there is an item equipped and if the user actually owns it in their inventory
             if (userItemId && inventory.includes(userItemId)) {
