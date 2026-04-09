@@ -631,7 +631,7 @@ app.post('/api/add-user-item', async (req, res) => {
 
         const userItemRef = userItems.doc();
         await db.runTransaction(async (tx) => {
-            tx.set(userItemRef, { userId, itemId });
+            tx.set(userItemRef, { userId, baseItemId: itemId });
             tx.update(userRef, {
                 inventory: admin.firestore.FieldValue.arrayUnion(userItemRef.id),
             });
@@ -1038,7 +1038,7 @@ app.post('/api/create-listing', async (req, res) => {
         }
 
         // Create the listing
-        await listings.add({ userId, itemId, userItemId, price });
+        await listings.add({ userId, itemId, userItemId, price, active: true });
         res.status(201).json({ message: 'Listing created successfully' });
     }
     catch (error) {
@@ -1078,6 +1078,8 @@ app.delete('/api/delete-listing/:listingId', async (req, res) => {
         res.status(500).json({ error: 'Failed to delete listing' });
     }
 });
+
+//TODO 
 
 //image handling
 
