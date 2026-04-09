@@ -4,6 +4,8 @@
   "description": "backend",
   "main": "index.cjs",
   "scripts": {
+    "start": "node index.cjs",
+    "dev": "node --watch index.cjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

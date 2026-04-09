@@ -51,6 +51,28 @@ const itemsInQueue = [];
 
 //server time
 
+/**
+ * GET /api/server-time
+ * @route GET /api/server-time
+ * @endpoint /api/server-time
+ * @summary Get server time offset in seconds.
+ * @tags System
+ * @response {object} 200 - Returns the current server time value.
+ * @description Returns server time in seconds relative to the configured baseline date.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "serverTime": 1234567
+ * }
+ * ```
+ */
 app.get('/api/server-time', (req, res) => {
     const serverTime = Math.floor((Date.now() - new Date('2026-01-01').getTime()) / 1000);
     res.status(200).json({ serverTime });
@@ -58,6 +80,32 @@ app.get('/api/server-time', (req, res) => {
 
 //server sessions
 
+/**
+ * POST /api/create-session
+ * @route POST /api/create-session
+ * @endpoint /api/create-session
+ * @summary Create a session token for a user.
+ * @tags Sessions
+ * @response {object} 201 - Returns the newly generated session ID.
+ * @response {object} 400 - Missing required request body fields.
+ * @response {object} 500 - Failed to create session.
+ * @description Creates and stores a new session identifier for the provided user.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {
+ *     "userId": "user_123"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "sessionId": "<sha256_session_id>"
+ * }
+ * ```
+ */
 app.post('/api/create-session', async (req, res) => {
     const { userId } = req.body;
 
@@ -76,6 +124,13 @@ app.post('/api/create-session', async (req, res) => {
     }
 });
 
+/**
+ * Generates a unique session ID for a user based on their user ID,
+ * current timestamp, and a random salt.
+ *
+ * @param {string} userId - The ID of the user.
+ * @returns {string} The generated SHA-256 session ID.
+ */
 function generateSessionId(userId) {
     const timestamp = Date.now();
 
@@ -85,17 +140,37 @@ function generateSessionId(userId) {
     return crypto.createHash('sha256').update(dataString).digest('hex');
 }
 
-function normalizeMetadataId(rawMetadataId) {
-    return String(rawMetadataId ?? '').trim();
-}
-
-
 
 //user handler endpoints
-/* TODO
-    Admin page endpoints for user management
-*/
 
+/**
+ * GET /api/get-username-exists/:username
+ * @route GET /api/get-username-exists/:username
+ * @endpoint /api/get-username-exists/:username
+ * @summary Check username availability.
+ * @tags Users
+ * @param {string} req.params.username - Username to validate.
+ * @response {object} 200 - Indicates whether the username is available.
+ * @response {object} 400 - Missing username in request parameters.
+ * @response {object} 409 - Username already exists.
+ * @response {object} 500 - Failed to check username existence.
+ * @description Checks whether a username is already taken.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "username": "player1"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "exists": false
+ * }
+ * ```
+ */
 app.get('/api/get-username-exists/:username', (req, res) => {
     const username = req.params.username;
 
@@ -120,6 +195,34 @@ app.get('/api/get-username-exists/:username', (req, res) => {
         });
 });
 
+/**
+ * GET /api/get-username/:userid
+ * @route GET /api/get-username/:userid
+ * @endpoint /api/get-username/:userid
+ * @summary Get username by user ID.
+ * @tags Users
+ * @param {string} req.params.userid - User identifier.
+ * @response {object} 200 - Returns the username for the given user ID.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to retrieve username.
+ * @description Fetches a user's username by their user identifier.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userid": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "username": "player1"
+ * }
+ * ```
+ */
 app.get('/api/get-username/:userid', (req, res) => {
     const userId = req.params.userid;
 
@@ -143,6 +246,34 @@ app.get('/api/get-username/:userid', (req, res) => {
         });
 });
 
+/**
+ * POST /api/create-username
+ * @route POST /api/create-username
+ * @endpoint /api/create-username
+ * @summary Create username for a user.
+ * @tags Users
+ * @response {object} 201 - Confirms username creation.
+ * @response {object} 400 - Missing required request body fields.
+ * @response {object} 409 - Username already exists or user already has a username.
+ * @response {object} 500 - Failed to create username.
+ * @description Creates a unique username for a user who does not already have one.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {
+ *     "userId": "user_123",
+ *     "username": "player1"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Username created successfully"
+ * }
+ * ```
+ */
 app.post('/api/create-username', (req, res) => {
     const { userId, username } = req.body;
 
@@ -190,6 +321,33 @@ app.post('/api/create-username', (req, res) => {
         });
 });
 
+/**
+ * GET /api/get-permissions/:userid
+ * @route GET /api/get-permissions/:userid
+ * @endpoint /api/get-permissions/:userid
+ * @summary Check whether a user is admin.
+ * @tags Users, Admin
+ * @param {string} req.params.userid - User identifier.
+ * @response {object} 200 - Returns whether the user has admin permissions.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 500 - Failed to check permissions.
+ * @description Checks if the specified user is an admin.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userid": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "isAdmin": true
+ * }
+ * ```
+ */
 app.get('/api/get-permissions/:userid', async (req, res) => {
     const userId = req.params.userid;
 
@@ -207,6 +365,34 @@ app.get('/api/get-permissions/:userid', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/get-coins/:userid
+ * @route GET /api/get-coins/:userid
+ * @endpoint /api/get-coins/:userid
+ * @summary Get coin balance for a user.
+ * @tags Users, Coins
+ * @param {string} req.params.userid - User identifier.
+ * @response {object} 200 - Returns the user's current coin balance.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to retrieve coins.
+ * @description Retrieves the coin amount stored for a user.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userid": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "coins": 1200
+ * }
+ * ```
+ */
 app.get('/api/get-coins/:userid', (req, res) => {
     const userId = req.params.userid;
 
@@ -230,6 +416,38 @@ app.get('/api/get-coins/:userid', (req, res) => {
 
 // coin management
 
+/**
+ * POST /api/update-coins/:sessionId
+ * @route POST /api/update-coins/:sessionId
+ * @endpoint /api/update-coins/:sessionId
+ * @summary Add coins for an authenticated user session.
+ * @tags Coins, Sessions
+ * @param {string} req.params.sessionId - Session identifier.
+ * @response {object} 200 - Confirms coin balance update.
+ * @response {object} 400 - Missing or invalid request body fields.
+ * @response {object} 403 - Unauthorized or invalid session.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to process coin update.
+ * @description Adds a validated amount of coins for an authenticated session.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "sessionId": "<session_id>"
+ *   },
+ *   "body": {
+ *     "userId": "user_123",
+ *     "amount": 50
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Coins updated successfully"
+ * }
+ * ```
+ */
 app.post('/api/update-coins/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     const { userId, amount } = req.body;
@@ -274,6 +492,37 @@ app.post('/api/update-coins/:sessionId', async (req, res) => {
 
 //metadata handler endpoints
 
+/**
+ * GET /api/get-all-metadatas
+ * @route GET /api/get-all-metadatas
+ * @endpoint /api/get-all-metadatas
+ * @summary List all metadata entries.
+ * @tags Metadata
+ * @response {object} 200 - Returns all metadata entries.
+ * @response {object} 500 - Failed to retrieve all metadatas.
+ * @description Lists every metadata record available in the database.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "metadatas": [
+ *     {
+ *       "id": "rare",
+ *       "title": "Rare",
+ *       "description": "Rare tier",
+ *       "backgroundColor": "#112233",
+ *       "textColor": "#ffffff"
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-all-metadatas', async (req, res) => {
     try {
         const snapshot = await metadatas.get();
@@ -286,8 +535,42 @@ app.get('/api/get-all-metadatas', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/get-metadata/:metadataid
+ * @route GET /api/get-metadata/:metadataid
+ * @endpoint /api/get-metadata/:metadataid
+ * @summary Get one metadata entry by ID.
+ * @tags Metadata
+ * @param {string} req.params.metadataid - Metadata identifier.
+ * @response {object} 200 - Returns the requested metadata object.
+ * @response {object} 400 - Missing metadataId in request parameters.
+ * @response {object} 404 - Metadata not found.
+ * @response {object} 500 - Failed to retrieve metadata.
+ * @description Fetches a single metadata entry by ID.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "metadataid": "rare"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "metadata": {
+ *     "id": "rare",
+ *     "title": "Rare",
+ *     "description": "Rare tier",
+ *     "backgroundColor": "#112233",
+ *     "textColor": "#ffffff"
+ *   }
+ * }
+ * ```
+ */
 app.get('/api/get-metadata/:metadataid', async (req, res) => {
-    const metadataId = normalizeMetadataId(req.params.metadataid);
+    const metadataId = req.params.metadataid;
 
     if (!metadataId) {
         return res.status(400).json({ error: 'Missing metadataId in request parameters' });
@@ -307,6 +590,40 @@ app.get('/api/get-metadata/:metadataid', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/create-metadata
+ * @route POST /api/create-metadata
+ * @endpoint /api/create-metadata
+ * @summary Create metadata entry.
+ * @tags Metadata, Admin
+ * @response {object} 201 - Confirms metadata creation and ID.
+ * @response {object} 400 - Missing required request body fields.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 409 - Metadata already exists.
+ * @response {object} 500 - Failed to create metadata.
+ * @description Creates a new metadata entry for authorized admin users.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {
+ *     "userId": "admin_1",
+ *     "id": "rare",
+ *     "title": "Rare",
+ *     "description": "Rare tier",
+ *     "backgroundColor": "#112233",
+ *     "textColor": "#ffffff"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Metadata created successfully",
+ *   "metadataId": "rare"
+ * }
+ * ```
+ */
 app.post('/api/create-metadata', async (req, res) => {
     const { userId, id, title, description, backgroundColor, textColor } = req.body;
 
@@ -317,7 +634,6 @@ app.post('/api/create-metadata', async (req, res) => {
     if (!title || !description || !backgroundColor || !textColor) {
         return res.status(400).json({ error: 'Missing required metadata fields in request body' });
     }
-
     if (!await isAdmin(userId)) {
         return res.status(403).json({ error: 'User does not have permission' });
     }
@@ -338,8 +654,43 @@ app.post('/api/create-metadata', async (req, res) => {
     }
 });
 
+/**
+ * PATCH /api/update-metadata/:metadataid
+ * @route PATCH /api/update-metadata/:metadataid
+ * @endpoint /api/update-metadata/:metadataid
+ * @summary Update metadata entry fields.
+ * @tags Metadata, Admin
+ * @param {string} req.params.metadataid - Metadata identifier.
+ * @response {object} 200 - Confirms metadata update.
+ * @response {object} 400 - Missing identifiers or no fields provided to update.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 404 - Metadata not found.
+ * @response {object} 500 - Failed to update metadata.
+ * @description Updates one or more fields of an existing metadata entry.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "metadataid": "rare"
+ *   },
+ *   "body": {
+ *     "userId": "admin_1",
+ *     "title": "Rare+",
+ *     "description": "Updated tier",
+ *     "backgroundColor": "#223344",
+ *     "textColor": "#eeeeee"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Metadata updated successfully"
+ * }
+ * ```
+ */
 app.patch('/api/update-metadata/:metadataid', async (req, res) => {
-    const metadataId = normalizeMetadataId(req.params.metadataid);
+    const metadataId = req.params.metadataid;
     const { userId, title, description, backgroundColor, textColor } = req.body;
 
     if (!userId || !metadataId) {
@@ -378,8 +729,39 @@ app.patch('/api/update-metadata/:metadataid', async (req, res) => {
     }
 });
 
+/**
+ * DELETE /api/delete-metadata/:metadataid
+ * @route DELETE /api/delete-metadata/:metadataid
+ * @endpoint /api/delete-metadata/:metadataid
+ * @summary Delete metadata entry.
+ * @tags Metadata, Admin
+ * @param {string} req.params.metadataid - Metadata identifier.
+ * @response {object} 200 - Confirms metadata deletion.
+ * @response {object} 400 - Missing userId or metadataId.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 404 - Metadata not found.
+ * @response {object} 500 - Failed to delete metadata.
+ * @description Deletes a metadata entry for authorized admin users.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "metadataid": "rare"
+ *   },
+ *   "body": {
+ *     "userId": "admin_1"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Metadata deleted successfully"
+ * }
+ * ```
+ */
 app.delete('/api/delete-metadata/:metadataid', async (req, res) => {
-    const metadataId = normalizeMetadataId(req.params.metadataid);
+    const metadataId = req.params.metadataid;
     const { userId } = req.body;
 
     if (!userId || !metadataId) {
@@ -406,6 +788,43 @@ app.delete('/api/delete-metadata/:metadataid', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/get-all-items
+ * @route GET /api/get-all-items
+ * @endpoint /api/get-all-items
+ * @summary List all base items.
+ * @tags Items
+ * @response {object} 200 - Returns all base items with stats.
+ * @response {object} 500 - Failed to retrieve all items.
+ * @description Lists all items and includes their first available stats document.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "items": [
+ *     {
+ *       "id": "sword_1",
+ *       "name": "Iron Sword",
+ *       "type": "Weapon",
+ *       "stats": {
+ *         "circleDamage": 10,
+ *         "squareDamage": 9,
+ *         "triangleDamage": 11,
+ *         "critChance": 0.1,
+ *         "critDamage": 1.5,
+ *         "metadata": "rare"
+ *       }
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-all-items', async (req, res) => {
     try {
         const snapshot = await items.get();
@@ -428,6 +847,44 @@ app.get('/api/get-all-items', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/get-item/:itemid
+ * @route GET /api/get-item/:itemid
+ * @endpoint /api/get-item/:itemid
+ * @summary Get one base item by ID.
+ * @tags Items
+ * @param {string} req.params.itemid - Item identifier.
+ * @response {object} 200 - Returns a single item and its stats.
+ * @response {object} 404 - Item not found.
+ * @response {object} 500 - Failed to retrieve item.
+ * @description Fetches a base item by ID with its stats payload.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "itemid": "sword_1"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "item": {
+ *     "name": "Iron Sword",
+ *     "type": "Weapon",
+ *     "stats": {
+ *       "circleDamage": 10,
+ *       "squareDamage": 9,
+ *       "triangleDamage": 11,
+ *       "critChance": 0.1,
+ *       "critDamage": 1.5,
+ *       "metadata": "rare"
+ *     }
+ *   }
+ * }
+ * ```
+ */
 app.get('/api/get-item/:itemid', async (req, res) => {
     const itemId = req.params.itemid;
 
@@ -455,6 +912,36 @@ app.get('/api/get-item/:itemid', async (req, res) => {
     }
 });
 
+/**
+ * DELETE /api/delete-item/:itemid
+ * @route DELETE /api/delete-item/:itemid
+ * @endpoint /api/delete-item/:itemid
+ * @summary Delete base item.
+ * @tags Items, Admin
+ * @param {string} req.params.itemid - Item identifier.
+ * @response {object} 200 - Confirms item deletion.
+ * @response {object} 400 - Missing userId in request body.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 500 - Failed to delete item.
+ * @description Deletes a base item for authorized admin users.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "itemid": "sword_1"
+ *   },
+ *   "body": {
+ *     "userId": "admin_1"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Item deleted successfully"
+ * }
+ * ```
+ */
 app.delete('/api/delete-item/:itemid', async (req, res) => {
     const itemId = req.params.itemid;
     const userId = req.body.userId;
@@ -476,6 +963,52 @@ app.delete('/api/delete-item/:itemid', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/create-item
+ * @route POST /api/create-item
+ * @endpoint /api/create-item
+ * @summary Create base item and stats.
+ * @tags Items, Admin
+ * @response {object} 201 - Confirms item and stats creation.
+ * @response {object} 400 - Missing or invalid request body fields.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 409 - Item already exists.
+ * @response {object} 500 - Failed to create item.
+ * @description Creates a new base item with its associated stats document.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {
+ *     "userId": "admin_1",
+ *     "id": "sword_1",
+ *     "name": "Iron Sword",
+ *     "description": "Starter weapon",
+ *     "type": "Weapon",
+ *     "knockback": 2,
+ *     "imageName": "sword.png",
+ *     "imageUrl": "https://example.com/sword.png",
+ *     "stats": {
+ *       "id": "stats",
+ *       "circleDamage": 10,
+ *       "squareDamage": 9,
+ *       "triangleDamage": 11,
+ *       "critChance": 0.1,
+ *       "critDamage": 1.5,
+ *       "metadata": "rare"
+ *     }
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Item created successfully",
+ *   "itemId": "sword_1",
+ *   "statsId": "stats"
+ * }
+ * ```
+ */
 app.post('/api/create-item', async (req, res) => {
     try {
         const { userId, id, name, description, type, knockback, imageName, imageUrl, stats } = req.body;
@@ -532,6 +1065,43 @@ app.post('/api/create-item', async (req, res) => {
     }
 });
 
+/**
+ * PATCH /api/update-item/:itemid
+ * @route PATCH /api/update-item/:itemid
+ * @endpoint /api/update-item/:itemid
+ * @summary Update base item and/or stats.
+ * @tags Items, Admin
+ * @param {string} req.params.itemid - Item identifier.
+ * @response {object} 200 - Confirms item update.
+ * @response {object} 400 - Invalid update payload or field values.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 404 - Item not found.
+ * @response {object} 500 - Failed to update item.
+ * @description Updates selected base item fields and/or stats fields.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "itemid": "sword_1"
+ *   },
+ *   "body": {
+ *     "userId": "admin_1",
+ *     "name": "Iron Sword+",
+ *     "knockback": 3,
+ *     "stats": {
+ *       "circleDamage": 12,
+ *       "metadata": "epic"
+ *     }
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Item updated successfully"
+ * }
+ * ```
+ */
 app.patch('/api/update-item/:itemid', async (req, res) => {
     const itemId = req.params.itemid;
     const { userId, name, description, type, knockback, imageUrl, imageName, stats } = req.body;
@@ -599,8 +1169,40 @@ app.patch('/api/update-item/:itemid', async (req, res) => {
     }
 });
 
-//TODO CRUD for user items, equipped items, and inventory management
+//CRUD for user items, equip items, inventory management
 
+/**
+ * POST /api/add-user-item/:sessionId
+ * @route POST /api/add-user-item/:sessionId
+ * @endpoint /api/add-user-item/:sessionId
+ * @summary Add a base item instance to user inventory.
+ * @tags Inventory, Sessions
+ * @param {string} req.params.sessionId - Session identifier.
+ * @response {object} 201 - Confirms inventory item creation.
+ * @response {object} 400 - Missing itemId in request body.
+ * @response {object} 403 - Unauthorized or invalid session.
+ * @response {object} 404 - User or base item not found.
+ * @response {object} 500 - Failed to authenticate session or add item.
+ * @description Adds a base item instance to the authenticated user's inventory.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "sessionId": "<session_id>"
+ *   },
+ *   "body": {
+ *     "itemId": "sword_1"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Item added to user successfully",
+ *   "userItemId": "user_item_123"
+ * }
+ * ```
+ */
 app.post('/api/add-user-item/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     const { itemId } = req.body;
@@ -656,6 +1258,39 @@ app.post('/api/add-user-item/:sessionId', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/equip-item/:sessionId
+ * @route POST /api/equip-item/:sessionId
+ * @endpoint /api/equip-item/:sessionId
+ * @summary Equip or unequip a user item.
+ * @tags Inventory, Equipment, Sessions
+ * @param {string} req.params.sessionId - Session identifier.
+ * @response {object} 200 - Confirms equip or unequip action.
+ * @response {object} 400 - Missing or invalid request fields.
+ * @response {object} 403 - Unauthorized session or item ownership violation.
+ * @response {object} 404 - User, user item, or base item not found.
+ * @response {object} 500 - Failed to authenticate session or equip item.
+ * @description Equips or unequips a user-owned item for the selected slot type.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "sessionId": "<session_id>"
+ *   },
+ *   "body": {
+ *     "userId": "user_123",
+ *     "userItemId": "user_item_123",
+ *     "type": "Weapon"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Item equipped successfully"
+ * }
+ * ```
+ */
 app.post('/api/equip-item/:sessionId', async (req, res) => {
     const sessionId = req.params.sessionId;
     const { userId, userItemId, type } = req.body;
@@ -715,7 +1350,6 @@ app.post('/api/equip-item/:sessionId', async (req, res) => {
         if (!itemDoc.exists) {
             return res.status(404).json({ error: 'Base item not found for the provided user item' });
         }
-
         if (itemDoc.data().type !== type) {
             return res.status(400).json({ error: 'Provided type does not match user item type' });
         }
@@ -735,7 +1369,41 @@ app.post('/api/equip-item/:sessionId', async (req, res) => {
     }
 });
 
-//TODO test it and fix it
+/**
+ * GET /api/get-equipped-items/:userId
+ * @route GET /api/get-equipped-items/:userId
+ * @endpoint /api/get-equipped-items/:userId
+ * @summary Get equipped user items.
+ * @tags Inventory, Equipment
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns currently equipped user items.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to fetch equipped items.
+ * @description Retrieves equipped items that are still present in the user's inventory.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "items": [
+ *     {
+ *       "type": "Weapon",
+ *       "userItemId": "user_item_123",
+ *       "userId": "user_123",
+ *       "baseItemId": "sword_1"
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-equipped-items/:userId', async (req, res) => {
     const userId = req.params.userId;
 
@@ -781,6 +1449,49 @@ app.get('/api/get-equipped-items/:userId', async (req, res) => {
 
 //inventory
 
+/**
+ * GET /api/get-inventory/:userId
+ * @route GET /api/get-inventory/:userId
+ * @endpoint /api/get-inventory/:userId
+ * @summary Get resolved inventory for a user.
+ * @tags Inventory
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns resolved inventory entries.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to fetch inventory.
+ * @description Returns a user's inventory enriched with base item data and stats.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "items": [
+ *     {
+ *       "userItemId": "user_item_123",
+ *       "itemId": "sword_1",
+ *       "name": "Iron Sword",
+ *       "type": "Weapon",
+ *       "stats": {
+ *         "circleDamage": 10,
+ *         "squareDamage": 9,
+ *         "triangleDamage": 11,
+ *         "critChance": 0.1,
+ *         "critDamage": 1.5,
+ *         "metadata": "rare"
+ *       }
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-inventory/:userId', async (req, res) => {
     const userId = req.params.userId;
 
@@ -939,8 +1650,41 @@ app.get('/api/get-inventory/:userId', async (req, res) => {
 });
 
 
-//listings - TODO test them
+//listings
 
+/**
+ * GET /api/get-all-active-listings
+ * @route GET /api/get-all-active-listings
+ * @endpoint /api/get-all-active-listings
+ * @summary List all active marketplace listings.
+ * @tags Listings, Marketplace
+ * @response {object} 200 - Returns all active marketplace listings.
+ * @response {object} 500 - Failed to fetch all listings.
+ * @description Lists active listings enriched with seller and item details.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "listings": [
+ *     {
+ *       "id": "listing_1",
+ *       "userId": "seller_1",
+ *       "itemId": "sword_1",
+ *       "price": 500,
+ *       "username": "seller",
+ *       "itemName": "Iron Sword",
+ *       "itemImageUrl": "https://example.com/sword.png"
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-all-active-listings', async (req, res) => {
     try {
         const snapshot = await db.collection('listings').where('active', '==', true).get();
@@ -977,6 +1721,39 @@ app.get('/api/get-all-active-listings', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/get-all-inactive-listings
+ * @route GET /api/get-all-inactive-listings
+ * @endpoint /api/get-all-inactive-listings
+ * @summary List all inactive marketplace listings.
+ * @tags Listings, Marketplace
+ * @response {object} 200 - Returns all inactive marketplace listings.
+ * @response {object} 500 - Failed to fetch all listings.
+ * @description Lists inactive listings enriched with seller and item details.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "listings": [
+ *     {
+ *       "id": "listing_2",
+ *       "userId": "seller_1",
+ *       "itemId": "armor_1",
+ *       "price": 800,
+ *       "username": "seller",
+ *       "itemName": "Iron Armor",
+ *       "itemImageUrl": "https://example.com/armor.png"
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-all-inactive-listings', async (req, res) => {
     try {
         const snapshot = await db.collection('listings').where('active', '==', false).get();
@@ -1013,6 +1790,43 @@ app.get('/api/get-all-inactive-listings', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/get-user-listings/:userId
+ * @route GET /api/get-user-listings/:userId
+ * @endpoint /api/get-user-listings/:userId
+ * @summary List all listings created by a user.
+ * @tags Listings, Marketplace
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns all listings created by the user.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 500 - Failed to fetch user listings.
+ * @description Fetches marketplace listings that belong to a specific user.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "seller_1"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "listings": [
+ *     {
+ *       "id": "listing_1",
+ *       "userId": "seller_1",
+ *       "itemId": "sword_1",
+ *       "price": 500,
+ *       "active": true,
+ *       "itemName": "Iron Sword",
+ *       "itemImageUrl": "https://example.com/sword.png"
+ *     }
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-user-listings/:userId', async (req, res) => {
     const userId = req.params.userId;
     if (!userId) {
@@ -1029,6 +1843,7 @@ app.get('/api/get-user-listings/:userId', async (req, res) => {
             if (itemDoc.exists) {
                 listingsArray.push({
                     id: doc.id,
+                    active: listingData.active,
                     userId: listingData.userId,
                     itemId: listingData.itemId,
                     price: listingData.price,
@@ -1045,7 +1860,36 @@ app.get('/api/get-user-listings/:userId', async (req, res) => {
     }
 });
 
-//TODO test
+/**
+ * GET /api/get-listed-user-item-ids/:userId
+ * @route GET /api/get-listed-user-item-ids/:userId
+ * @endpoint /api/get-listed-user-item-ids/:userId
+ * @summary Get listed user-item IDs for a user.
+ * @tags Listings, Marketplace
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns unique listed user-item IDs.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 500 - Failed to fetch listed userItemIds.
+ * @description Retrieves the set of user item IDs currently referenced by a user's listings.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "seller_1"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "userItemIds": [
+ *     "user_item_123",
+ *     "user_item_456"
+ *   ]
+ * }
+ * ```
+ */
 app.get('/api/get-listed-user-item-ids/:userId', async (req, res) => {
     const userId = req.params.userId;
 
@@ -1075,6 +1919,37 @@ app.get('/api/get-listed-user-item-ids/:userId', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/create-listing
+ * @route POST /api/create-listing
+ * @endpoint /api/create-listing
+ * @summary Create marketplace listing.
+ * @tags Listings, Marketplace
+ * @response {object} 201 - Confirms listing creation.
+ * @response {object} 400 - Missing required fields or invalid price.
+ * @response {object} 403 - User does not own the specified item.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to create listing.
+ * @description Creates a new active marketplace listing for a user-owned item.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {
+ *     "userId": "seller_1",
+ *     "itemId": "sword_1",
+ *     "userItemId": "user_item_123",
+ *     "price": 500
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Listing created successfully"
+ * }
+ * ```
+ */
 app.post('/api/create-listing', async (req, res) => {
     const { userId, itemId, userItemId, price } = req.body;
 
@@ -1108,6 +1983,37 @@ app.post('/api/create-listing', async (req, res) => {
     }
 });
 
+/**
+ * DELETE /api/delete-listing/:listingId
+ * @route DELETE /api/delete-listing/:listingId
+ * @endpoint /api/delete-listing/:listingId
+ * @summary Delete marketplace listing.
+ * @tags Listings, Marketplace
+ * @param {string} req.params.listingId - Listing identifier.
+ * @response {object} 200 - Confirms listing deletion.
+ * @response {object} 400 - Missing userId or listingId.
+ * @response {object} 403 - User is not the owner of the listing.
+ * @response {object} 404 - User or listing not found.
+ * @response {object} 500 - Failed to delete listing.
+ * @description Deletes a listing when requested by its owner.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "listingId": "listing_1"
+ *   },
+ *   "body": {
+ *     "userId": "seller_1"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Listing deleted successfully"
+ * }
+ * ```
+ */
 app.delete('/api/delete-listing/:listingId', async (req, res) => {
     const { userId } = req.body;
     const listingId = req.params.listingId;
@@ -1126,7 +2032,6 @@ app.delete('/api/delete-listing/:listingId', async (req, res) => {
         if (!listingDoc.exists) {
             return res.status(404).json({ error: 'Listing not found' });
         }
-
         if (listingDoc.data().userId !== userId) {
             return res.status(403).json({ error: 'User is not the owner of the listing' });
         }
@@ -1140,6 +2045,36 @@ app.delete('/api/delete-listing/:listingId', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/buy-listing/:listingId
+ * @route POST /api/buy-listing/:listingId
+ * @endpoint /api/buy-listing/:listingId
+ * @summary Buy an active marketplace listing.
+ * @tags Listings, Marketplace
+ * @param {string} req.params.listingId - Listing identifier.
+ * @response {object} 200 - Confirms successful listing purchase.
+ * @response {object} 400 - Missing request fields, inactive listing, insufficient coins, or item in queue.
+ * @response {object} 404 - Buyer, seller, or listing not found.
+ * @response {object} 500 - Failed to buy listing.
+ * @description Purchases an active listing and transfers item ownership and coins.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "listingId": "listing_1"
+ *   },
+ *   "body": {
+ *     "userId": "buyer_1"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Listing bought successfully"
+ * }
+ * ```
+ */
 app.post('/api/buy-listing/:listingId', async (req, res) => {
     const { userId } = req.body;
     const listingId = req.params.listingId;
@@ -1213,6 +2148,34 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
 
 //image handling
 
+/**
+ * POST /api/upload-image
+ * @route POST /api/upload-image
+ * @endpoint /api/upload-image
+ * @summary Upload image to Cloudinary.
+ * @tags Images, Admin
+ * @response {object} 201 - Returns uploaded image URL.
+ * @response {object} 400 - Missing userId or file.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 500 - Failed to upload image.
+ * @description Uploads an image file to Cloudinary for authorized admin users.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {
+ *     "userId": "admin_1",
+ *     "file": "<multipart_binary_file>"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "url": "https://res.cloudinary.com/<cloud>/image/upload/<file>"
+ * }
+ * ```
+ */
 app.post('/api/upload-image', upload.single('file'), async (req, res) => {
     try {
         const { userId } = req.body;
@@ -1246,6 +2209,35 @@ app.post('/api/upload-image', upload.single('file'), async (req, res) => {
     }
 });
 
+/**
+ * DELETE /api/delete-image
+ * @route DELETE /api/delete-image
+ * @endpoint /api/delete-image
+ * @summary Delete image from Cloudinary.
+ * @tags Images, Admin
+ * @response {object} 200 - Confirms image deletion result.
+ * @response {object} 400 - Missing userId or filename.
+ * @response {object} 403 - User does not have permission.
+ * @response {object} 500 - Failed to delete image.
+ * @description Deletes an uploaded image from Cloudinary for authorized admin users.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {
+ *     "userId": "admin_1",
+ *     "filename": "sword.png"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Image deleted successfully",
+ *   "result": "ok"
+ * }
+ * ```
+ */
 app.delete('/api/delete-image', async (req, res) => {
     const { userId, filename } = req.body;
 
@@ -1267,6 +2259,13 @@ app.delete('/api/delete-image', async (req, res) => {
     }
 });
 
+
+/**
+ * Checks if a given user is an admin by querying the `admins` collection.
+ *
+ * @param {string} userId - The ID of the user to check.
+ * @returns {Promise<boolean>} A promise resolving to true if the user is an admin, false otherwise.
+ */
 async function isAdmin(userId) {
     return admins.doc(userId).get()
         .then((adminDoc) => {
@@ -1279,8 +2278,28 @@ async function isAdmin(userId) {
         });
 }
 
-//test endpoint
-
+/**
+ * GET /api/hello
+ * @route GET /api/hello
+ * @endpoint /api/hello
+ * @summary Health check endpoint.
+ * @tags System
+ * @response {object} 200 - Returns hello message.
+ * @description Health-check endpoint that responds with a static greeting.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Hello world!"
+ * }
+ * ```
+ */
 app.get('/api/hello', (req, res) => {
     console.log('Received hello request');
     res.status(200).json({ message: 'Hello world!' });
