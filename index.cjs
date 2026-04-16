@@ -10,7 +10,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 /*
 TODO:
 - add protection against identity theft
-- equiped item can not be listed
+- area get post
 - vitest
 */
 
@@ -53,6 +53,7 @@ const items = db.collection('items');
 const listings = db.collection('listings');
 const metadatas = db.collection('metadatas');
 const sessions = db.collection('sessions');
+const areas = db.collection('areas');
 
 const ALLOWED_ITEM_TYPES = ['Weapon', 'Armor'];
 
@@ -303,8 +304,12 @@ app.post('/api/create-username', (req, res) => {
                     .then((snapshot) => {
                         if (snapshot.empty) {
                             users.doc(userId).set({ username })
-                                .then(() => {
+                                .then(async () => {
                                     //console.log(`Username ${username} created for userId ${userId}`);
+
+
+                                    await users.doc(userId).update({ ownedAreas: [0], coins: 0 });
+
                                     return res.status(201).json({ message: 'Username created successfully' });
                                 })
                                 .catch((error) => {
@@ -2222,6 +2227,96 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
     }
 
 });
+
+//areas
+
+/**
+ * 
+ */
+
+app.get('/api/get-all-area', async (req, res) => {
+    try {
+        const snapshot = await db.collection('areas').get();
+        const areasArray = [];
+
+        snapshot.forEach((doc) => {
+            const areaData = doc.data();
+            areasArray.push({
+                id: doc.id,
+                name: areaData.name,
+                imageUrl: areaData.imageUrl,
+                price: areaData.price
+            });
+        });
+        res.status(200).json({ areas: areasArray });
+    } catch (error) {
+        console.warn('Error fetching areas:', error);
+        res.status(500).json({ error: 'Failed to fetch areas' });
+    }
+});
+
+app.get('/api/get-user-areas/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const ownedAreas = userDoc.data().ownedAreas || [];
+        res.status(200).json({ ownedAreas });
+    } catch (error) {
+        console.warn(`Error fetching owned areas for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to fetch owned areas' });
+    }
+});
+
+
+app.post('/api/purchase-area/:areaId', async (req, res) => {
+    const { userId } = req.body;
+    const areaId = req.params.areaId;
+
+    if (!userId || !areaId) {
+        return res.status(400).json({ error: 'Missing userId or areaId in request body' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const areaDoc = await db.collection('areas').doc(areaId).get();
+        if (!areaDoc.exists) {
+            return res.status(404).json({ error: 'Area not found' });
+        }
+        const areaData = areaDoc.data();
+
+        if (userDoc.data().coins < areaData.price) {
+            return res.status(400).json({ error: 'User does not have enough coins' });
+        }
+
+        const ownedAreas = userDoc.data().ownedAreas || [];
+        if (ownedAreas.includes(areaId)) {
+            return res.status(400).json({ error: 'User already owns this area' });
+        }
+
+        await users.doc(userId).update({
+            coins: admin.firestore.FieldValue.increment(-areaData.price),
+            ownedAreas: admin.firestore.FieldValue.arrayUnion(areaId)
+        });
+
+        res.status(200).json({ message: 'Area purchased successfully' });
+    } catch (error) {
+        console.warn(`Error purchasing area ${areaId} for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to purchase area' });
+    }
+});
+
 
 //image handling
 
