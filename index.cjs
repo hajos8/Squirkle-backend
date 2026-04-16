@@ -7,6 +7,15 @@ const multer = require('multer');
 const crypto = require('crypto');
 const upload = multer({ storage: multer.memoryStorage() });
 
+/*
+TODO:
+- add protection against identity theft
+- equiped item can not be listed
+- vitest
+*/
+
+
+
 dotenv.config();
 
 app = express();
@@ -2280,6 +2289,51 @@ app.delete('/api/delete-image', async (req, res) => {
     } catch (error) {
         console.warn("Error deleting image:", error);
         res.status(500).json({ error: "Failed to delete image" });
+    }
+});
+
+/**
+ * GET /api/check-admin/:userId
+ * @route GET /api/check-admin/:userId
+ * @endpoint /api/check-admin/:userId
+ * @summary Check if user is an admin.
+ * @tags Admin
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns admin status of the user.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 500 - Failed to check admin status.
+ * @description Checks if a given user has admin permissions by verifying their presence in the `admins` collection.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "isAdmin": true
+ * }
+ * ```
+ */
+
+app.get('/api/check-admin/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const adminStatus = await isAdmin(userId);
+        res.status(200).json({ isAdmin: adminStatus });
+    }
+    catch (error) {
+        console.warn(`Error checking admin status for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to check admin status' });
     }
 });
 
