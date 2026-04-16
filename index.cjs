@@ -1277,6 +1277,7 @@ app.post('/api/add-user-item/:sessionId', async (req, res) => {
  * @response {object} 200 - Confirms equip or unequip action.
  * @response {object} 400 - Missing or invalid request fields.
  * @response {object} 403 - Unauthorized session or item ownership violation.
+ * @response {object} 403 - Equipped item is currently listed for sale.
  * @response {object} 404 - User, user item, or base item not found.
  * @response {object} 500 - Failed to authenticate session or equip item.
  * @description Equips or unequips a user-owned item for the selected slot type.
@@ -1361,6 +1362,12 @@ app.post('/api/equip-item/:sessionId', async (req, res) => {
         }
         if (itemDoc.data().type !== type) {
             return res.status(400).json({ error: 'Provided type does not match user item type' });
+        }
+
+        const listings = await listingDoc.where('userItemId', '==', userItemId).get();
+
+        if (!listings.empty) {
+            return res.status(403).json({ error: 'Cannot equip an item that is currently listed for sale' });
         }
 
         //create equipped subcollection if it doesn't exist and set the equipped item for the type
