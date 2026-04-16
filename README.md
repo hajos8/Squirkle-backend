@@ -290,7 +290,7 @@ Collections used:
 
 ### Areas
 
-#### `GET /api/get-all-area`
+#### `GET /api/get-all-areas`
 - Summary: List all available areas.
 - Responses: `200`, `500`
 
