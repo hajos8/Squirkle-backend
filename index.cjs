@@ -2231,7 +2231,34 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
 //areas
 
 /**
- * 
+ * GET /api/get-all-area
+ * @route GET /api/get-all-area
+ * @endpoint /api/get-all-area
+ * @summary List all available areas.
+ * @tags Areas
+ * @response {object} 200 - Returns all areas with basic details.
+ * @response {object} 500 - Failed to fetch areas.
+ * @description Fetches every area document from the `areas` collection.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "areas": [
+ *     {
+ *       "id": "0",
+ *       "name": "Starter Plains",
+ *       "imageUrl": "https://example.com/area.png",
+ *       "price": 100
+ *     }
+ *   ]
+ * }
+ * ```
  */
 
 app.get('/api/get-all-area', async (req, res) => {
@@ -2255,6 +2282,34 @@ app.get('/api/get-all-area', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/get-user-areas/:userId
+ * @route GET /api/get-user-areas/:userId
+ * @endpoint /api/get-user-areas/:userId
+ * @summary Get owned areas for a user.
+ * @tags Areas, Users
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns the list of owned area IDs.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to fetch owned areas.
+ * @description Retrieves the `ownedAreas` array for the specified user.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "ownedAreas": [0, 2, 5]
+ * }
+ * ```
+ */
 app.get('/api/get-user-areas/:userId', async (req, res) => {
     const userId = req.params.userId;
 
@@ -2276,6 +2331,36 @@ app.get('/api/get-user-areas/:userId', async (req, res) => {
 });
 
 
+/**
+ * POST /api/purchase-area/:areaId
+ * @route POST /api/purchase-area/:areaId
+ * @endpoint /api/purchase-area/:areaId
+ * @summary Purchase an area for a user.
+ * @tags Areas, Users, Coins
+ * @param {string} req.params.areaId - Area identifier.
+ * @response {object} 200 - Confirms successful area purchase.
+ * @response {object} 400 - Missing fields, insufficient coins, or area already owned.
+ * @response {object} 404 - User or area not found.
+ * @response {object} 500 - Failed to purchase area.
+ * @description Deducts area price from user coins and appends areaId to `ownedAreas`.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "areaId": "2"
+ *   },
+ *   "body": {
+ *     "userId": "user_123"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Area purchased successfully"
+ * }
+ * ```
+ */
 app.post('/api/purchase-area/:areaId', async (req, res) => {
     const { userId } = req.body;
     const areaId = req.params.areaId;
