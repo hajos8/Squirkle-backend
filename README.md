@@ -42,6 +42,36 @@ Notes:
 - Available scripts:
 	- `pnpm start` runs `node index.cjs`
 	- `pnpm dev` runs `node --watch index.cjs`
+	- `pnpm test` runs the Vitest suite once
+	- `pnpm test:watch` runs Vitest in watch mode
+	- `pnpm test:coverage` runs Vitest with coverage output
+
+## Testing (Vitest)
+
+This project uses Vitest with a Node environment and module mocks for Firebase Admin, Cloudinary, and dotenv.
+
+Run tests:
+
+```bash
+pnpm test
+```
+
+Run in watch mode:
+
+```bash
+pnpm test:watch
+```
+
+Run with coverage:
+
+```bash
+pnpm test:coverage
+```
+
+Current baseline test scope:
+- Session utility: `generateSessionId`
+- System routes: `GET /api/hello`, `GET /api/server-time`
+- Session route: `POST /api/create-session`
 
 ## Authentication and Authorization Model
 

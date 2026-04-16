@@ -1,24 +1,220 @@
 const express = require('express');
 const cors = require('cors');
-const admin = require('firebase-admin');
 const dotenv = require('dotenv');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const crypto = require('crypto');
 const upload = multer({ storage: multer.memoryStorage() });
 
-/*
-TODO:
-- add protection against identity theft
-- area get post
-- vitest
-*/
+const isTestEnvironment = process.env.NODE_ENV === 'test';
 
+function createTestAdminMock() {
+    const documents = new Map();
 
+    const toKey = (collectionName, docId) => `${collectionName}/${docId}`;
+
+    const normalize = (value) => {
+        if (value === undefined || value === null) {
+            return value;
+        }
+
+        if (Array.isArray(value)) {
+            return value.map((entry) => normalize(entry));
+        }
+
+        if (typeof value === 'object') {
+            const normalizedObject = {};
+            Object.keys(value).forEach((key) => {
+                normalizedObject[key] = normalize(value[key]);
+            });
+            return normalizedObject;
+        }
+
+        return value;
+    };
+
+    const applyFieldValue = (baseValue, updateValue) => {
+        if (!updateValue || typeof updateValue !== 'object' || !updateValue.__op) {
+            return normalize(updateValue);
+        }
+
+        if (updateValue.__op === 'increment') {
+            return Number(baseValue || 0) + updateValue.value;
+        }
+
+        if (updateValue.__op === 'arrayUnion') {
+            const current = Array.isArray(baseValue) ? [...baseValue] : [];
+            updateValue.values.forEach((entry) => {
+                if (!current.some((existing) => existing === entry)) {
+                    current.push(entry);
+                }
+            });
+            return current;
+        }
+
+        if (updateValue.__op === 'arrayRemove') {
+            const current = Array.isArray(baseValue) ? [...baseValue] : [];
+            return current.filter((entry) => !updateValue.values.some((toRemove) => toRemove === entry));
+        }
+
+        return normalize(updateValue);
+    };
+
+    function makeDocRef(collectionName, docId) {
+        const key = toKey(collectionName, docId);
+
+        return {
+            id: docId,
+            path: key,
+            collection: (subCollectionName) => makeCollectionRef(`${collectionName}/${docId}/${subCollectionName}`),
+            get: async () => {
+                const data = documents.get(key);
+                return {
+                    id: docId,
+                    exists: data !== undefined,
+                    data: () => data,
+                    ref: makeDocRef(collectionName, docId),
+                };
+            },
+            set: async (data, options = {}) => {
+                const normalizedData = normalize(data);
+                const currentData = documents.get(key) || {};
+                const nextData = options.merge ? { ...currentData, ...normalizedData } : normalizedData;
+                documents.set(key, nextData);
+            },
+            update: async (updates) => {
+                const currentData = documents.get(key) || {};
+                const nextData = { ...currentData };
+
+                Object.keys(updates).forEach((field) => {
+                    nextData[field] = applyFieldValue(nextData[field], updates[field]);
+                });
+
+                documents.set(key, nextData);
+            },
+            delete: async () => {
+                documents.delete(key);
+            },
+        };
+    }
+
+    function makeCollectionRef(collectionName) {
+        const queryDocs = (filters) => {
+            const prefix = `${collectionName}/`;
+            const docs = [];
+
+            documents.forEach((value, key) => {
+                if (!key.startsWith(prefix)) {
+                    return;
+                }
+
+                const docId = key.slice(prefix.length);
+                if (docId.includes('/')) {
+                    return;
+                }
+
+                const passes = filters.every((filter) => {
+                    if (filter.op === '==') {
+                        return (value || {})[filter.field] === filter.value;
+                    }
+                    return false;
+                });
+
+                if (!passes) {
+                    return;
+                }
+
+                docs.push({
+                    id: docId,
+                    data: () => value,
+                    ref: makeDocRef(collectionName, docId),
+                });
+            });
+
+            return docs;
+        };
+
+        const makeQueryRef = (filters = [], limitValue = null) => ({
+            where: (field, op, value) => makeQueryRef([...filters, { field, op, value }], limitValue),
+            limit: (count) => makeQueryRef(filters, count),
+            get: async () => {
+                const docs = queryDocs(filters);
+                const limitedDocs = typeof limitValue === 'number' ? docs.slice(0, limitValue) : docs;
+
+                return {
+                    empty: limitedDocs.length === 0,
+                    size: limitedDocs.length,
+                    docs: limitedDocs,
+                    forEach: (callback) => {
+                        limitedDocs.forEach(callback);
+                    },
+                };
+            },
+        });
+
+        return {
+            doc: (docId) => makeDocRef(collectionName, String(docId)),
+            where: (field, op, value) => makeQueryRef([{ field, op, value }]),
+            get: async () => {
+                const docs = queryDocs([]);
+                return {
+                    empty: docs.length === 0,
+                    size: docs.length,
+                    docs,
+                    forEach: (callback) => {
+                        docs.forEach(callback);
+                    },
+                };
+            },
+            add: async (data) => {
+                const newId = `doc_${documents.size + 1}`;
+                const ref = makeDocRef(collectionName, newId);
+                await ref.set(data);
+                return ref;
+            },
+        };
+    }
+
+    const firestoreDb = {
+        collection: (collectionName) => makeCollectionRef(collectionName),
+        getAll: async (...docRefs) => Promise.all(docRefs.map((docRef) => docRef.get())),
+        runTransaction: async (operation) => {
+            const tx = {
+                set: (docRef, data) => docRef.set(data),
+                update: (docRef, data) => docRef.update(data),
+                delete: (docRef) => docRef.delete(),
+                get: (docRef) => docRef.get(),
+            };
+
+            return operation(tx);
+        },
+    };
+
+    const firestore = () => firestoreDb;
+    firestore.FieldValue = {
+        increment: (value) => ({ __op: 'increment', value }),
+        arrayUnion: (...values) => ({ __op: 'arrayUnion', values }),
+        arrayRemove: (...values) => ({ __op: 'arrayRemove', values }),
+    };
+
+    return {
+        initializeApp: () => ({ name: 'mock-firebase-app' }),
+        credential: {
+            cert: () => ({ projectId: 'mock-project' }),
+        },
+        firestore,
+        __mock: {
+            reset: () => documents.clear(),
+            getDoc: (collectionName, docId) => documents.get(toKey(collectionName, String(docId))),
+        },
+    };
+}
+
+const admin = isTestEnvironment ? createTestAdminMock() : require('firebase-admin');
 
 dotenv.config();
 
-app = express();
+const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -37,10 +233,10 @@ console.log('Cloudinary configuration:', {
 });
 
 const serviceAccount = JSON.parse(
-    Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT).toString('utf8')
+    Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT || '{}').toString('utf8')
 );
 
-const firebaseApp = admin.initializeApp({
+const firebaseApp = admin.initializeApp(isTestEnvironment ? {} : {
     credential: admin.credential.cert(serviceAccount),
     databaseURL: process.env.FIREBASE_DATABASE_URL,
 });
@@ -2616,9 +2812,24 @@ app.get('/api/hello', (req, res) => {
 });
 
 const port = 3333;
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-    console.log('firebaseApp initialized:', !!firebaseApp);
-    console.log('serviceAccount loaded:', !!serviceAccount);
-    console.log('Cloudinary configured:', !!cloudinary.config().cloud_name);
-})
+
+function startServer() {
+    return app.listen(port, () => {
+        console.log(`Server is running on port ${port}`);
+        console.log('firebaseApp initialized:', !!firebaseApp);
+        console.log('serviceAccount loaded:', !!serviceAccount);
+        console.log('Cloudinary configured:', !!cloudinary.config().cloud_name);
+    });
+}
+
+if (require.main === module) {
+    startServer();
+}
+
+module.exports = {
+    app,
+    startServer,
+    generateSessionId,
+    isAdmin,
+    __test: isTestEnvironment ? admin.__mock : null,
+};
