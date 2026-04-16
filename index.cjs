@@ -1962,8 +1962,13 @@ app.get('/api/get-listed-user-item-ids/:userId', async (req, res) => {
  * @tags Listings, Marketplace
  * @response {object} 201 - Confirms listing creation.
  * @response {object} 400 - Missing required fields or invalid price.
- * @response {object} 403 - User does not own the specified item.
+ * @response {object} 400 - The specified user item does not correspond to the specified base item.
+ * @response {object} 403 - Item already listed for sale.
+ * @response {object} 403 - Item ownership violation or item is currently equipped/listed.
+ * @response {object} 403 - User does not own the specified user item.
+ * @response {object} 403 - Equipped item cannot be listed for sale.
  * @response {object} 404 - User not found.
+ * @response {object} 404 - Item or user item not found.
  * @response {object} 500 - Failed to create listing.
  * @description Creates a new active marketplace listing for a user-owned item.
  * Request (placeholder JSON):
@@ -2006,6 +2011,38 @@ app.post('/api/create-listing', async (req, res) => {
         const inventory = userDoc.data().inventory || [];
         if (!inventory.includes(userItemId)) {
             return res.status(403).json({ error: 'User does not own the specified item' });
+        }
+
+        // Check if the item is already listed
+        const existingListings = await listings.where('userItemId', '==', userItemId).where('active', '==', true).get();
+        if (!existingListings.empty) {
+            return res.status(403).json({ error: 'This item is already listed for sale' });
+        }
+
+        // Check if the item exists        
+        const itemDoc = await items.doc(itemId).get();
+        if (!itemDoc.exists) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        // Check if the userItem exists and belongs to the user
+        const userItemDoc = await userItems.doc(userItemId).get();
+        if (!userItemDoc.exists) {
+            return res.status(404).json({ error: 'User item not found' });
+        }
+        if (userItemDoc.data().userId !== userId) {
+            return res.status(403).json({ error: 'User does not own the specified user item' });
+        }
+
+        // Check if the user item corresponds to the base item
+        if (userItemDoc.data().baseItemId !== itemId) {
+            return res.status(400).json({ error: 'The specified user item does not correspond to the specified base item' });
+        }
+
+        // Check if the item is currently equipped
+        const equippedSnapshot = await users.doc(userId).collection('equipped').where('userItemId', '==', userItemId).get();
+        if (!equippedSnapshot.empty) {
+            return res.status(403).json({ error: 'Cannot list an item that is currently equipped' });
         }
 
         // Create the listing
