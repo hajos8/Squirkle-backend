@@ -2829,7 +2829,7 @@ function startServer() {
     });
 }
 
-if (require.main === module) {
+if (!isTestEnvironment) {
     startServer();
 }
 
