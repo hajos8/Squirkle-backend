@@ -206,6 +206,9 @@ function createTestAdminMock() {
         __mock: {
             reset: () => documents.clear(),
             getDoc: (collectionName, docId) => documents.get(toKey(collectionName, String(docId))),
+            setDoc: (collectionName, docId, value) => {
+                documents.set(toKey(collectionName, String(docId)), normalize(value));
+            },
         },
     };
 }
