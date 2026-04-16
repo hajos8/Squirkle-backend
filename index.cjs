@@ -2347,7 +2347,7 @@ app.get('/api/get-user-areas/:userId', async (req, res) => {
  * @tags Areas, Users, Coins
  * @param {string} req.params.areaId - Area identifier.
  * @response {object} 200 - Confirms successful area purchase.
- * @response {object} 400 - Missing fields, insufficient coins, or area already owned.
+ * @response {object} 400 - Missing userId/body or areaId/params, insufficient coins, or area already owned.
  * @response {object} 404 - User or area not found.
  * @response {object} 500 - Failed to purchase area.
  * @description Deducts area price from user coins and appends areaId to `ownedAreas`.
@@ -2374,7 +2374,7 @@ app.post('/api/purchase-area/:areaId', async (req, res) => {
     const areaId = req.params.areaId;
 
     if (!userId || areaId === undefined) {
-        return res.status(400).json({ error: 'Missing userId or areaId in request body' });
+        return res.status(400).json({ error: 'Missing userId in request body or areaId in request parameters' });
     }
 
     try {
