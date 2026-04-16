@@ -2417,6 +2417,10 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
                 active: false,
                 buyerId: userId,
             });
+
+            tx.update(userItems.doc(listingData.userItemId), {
+                userId: userId,
+            });
         });
 
         //remove item from queue
