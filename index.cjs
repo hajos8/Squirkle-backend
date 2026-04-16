@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const upload = multer({ storage: multer.memoryStorage() });
 
 const isTestEnvironment = process.env.NODE_ENV === 'test';
+const isVercelEnvironment = process.env.VERCEL === '1';
 
 function createTestAdminMock() {
     const documents = new Map();
@@ -235,9 +236,29 @@ console.log('Cloudinary configuration:', {
     api_secret: !!process.env.CLOUDINARY_API_SECRET,
 });
 
-const serviceAccount = JSON.parse(
-    Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT || '{}').toString('utf8')
-);
+function parseServiceAccount(rawValue) {
+    const raw = String(rawValue || '').trim();
+
+    if (!raw) {
+        throw new Error('Missing FIREBASE_SERVICE_ACCOUNT environment variable');
+    }
+
+    try {
+        return JSON.parse(raw);
+    } catch {
+        // Allow base64 encoded JSON service account as an alternative env format.
+        try {
+            const decoded = Buffer.from(raw, 'base64').toString('utf8');
+            return JSON.parse(decoded);
+        } catch {
+            throw new Error('Invalid FIREBASE_SERVICE_ACCOUNT format. Use raw JSON or base64-encoded JSON.');
+        }
+    }
+}
+
+const serviceAccount = isTestEnvironment
+    ? {}
+    : parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 const firebaseApp = admin.initializeApp(isTestEnvironment ? {} : {
     credential: admin.credential.cert(serviceAccount),
@@ -2829,14 +2850,13 @@ function startServer() {
     });
 }
 
-if (!isTestEnvironment) {
+if (!isTestEnvironment && !isVercelEnvironment && require.main === module) {
     startServer();
 }
 
-module.exports = {
-    app,
-    startServer,
-    generateSessionId,
-    isAdmin,
-    __test: isTestEnvironment ? admin.__mock : null,
-};
+module.exports = app;
+module.exports.app = app;
+module.exports.startServer = startServer;
+module.exports.generateSessionId = generateSessionId;
+module.exports.isAdmin = isAdmin;
+module.exports.__test = isTestEnvironment ? admin.__mock : null;
