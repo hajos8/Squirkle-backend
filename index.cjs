@@ -2220,6 +2220,14 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
             });
         });
 
+        //remove item from queue
+        const index = itemsInQueue.indexOf(listingData.userItemId);
+        if (index > -1) {
+            itemsInQueue.splice(index, 1);
+        }
+
+        res.status(200).json({ message: 'Listing bought successfully' });
+
     }
     catch (error) {
         console.warn(`Error buying listing ${listingId} for user ${userId}:`, error);
@@ -2231,9 +2239,9 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
 //areas
 
 /**
- * GET /api/get-all-area
- * @route GET /api/get-all-area
- * @endpoint /api/get-all-area
+ * GET /api/get-all-areas
+ * @route GET /api/get-all-areas
+ * @endpoint /api/get-all-areas
  * @summary List all available areas.
  * @tags Areas
  * @response {object} 200 - Returns all areas with basic details.
@@ -2261,7 +2269,7 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
  * ```
  */
 
-app.get('/api/get-all-area', async (req, res) => {
+app.get('/api/get-all-areas', async (req, res) => {
     try {
         const snapshot = await db.collection('areas').get();
         const areasArray = [];
@@ -2365,7 +2373,7 @@ app.post('/api/purchase-area/:areaId', async (req, res) => {
     const { userId } = req.body;
     const areaId = req.params.areaId;
 
-    if (!userId || !areaId) {
+    if (!userId || areaId === undefined) {
         return res.status(400).json({ error: 'Missing userId or areaId in request body' });
     }
 
