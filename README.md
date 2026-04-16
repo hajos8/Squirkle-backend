@@ -98,6 +98,8 @@ Collections used:
 	- marketplace listings (`active`, `price`, `userId`, `itemId`, `userItemId`, etc.)
 - `metadatas`
 	- shared metadata entries for item styling/rarity-like data
+- `areas`
+	- purchasable world/zone entries (`name`, `imageUrl`, `price`)
 
 ## Endpoint Reference
 
@@ -285,6 +287,30 @@ Collections used:
 - Summary: Buy an active marketplace listing.
 - Params: `listingId`
 - Responses (documented): `200`, `400`, `404`, `500`
+
+### Areas
+
+#### `GET /api/get-all-area`
+- Summary: List all available areas.
+- Responses: `200`, `500`
+
+#### `GET /api/get-user-areas/:userId`
+- Summary: Get owned areas for a user.
+- Params: `userId`
+- Responses: `200`, `400`, `404`, `500`
+
+#### `POST /api/purchase-area/:areaId`
+- Summary: Purchase an area for a user.
+- Params: `areaId`
+- Body:
+
+```json
+{
+	"userId": "user_123"
+}
+```
+
+- Responses: `200`, `400`, `404`, `500`
 
 ### Images
 
