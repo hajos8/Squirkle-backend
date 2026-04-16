@@ -7,6 +7,15 @@ const multer = require('multer');
 const crypto = require('crypto');
 const upload = multer({ storage: multer.memoryStorage() });
 
+/*
+TODO:
+- add protection against identity theft
+- area get post
+- vitest
+*/
+
+
+
 dotenv.config();
 
 app = express();
@@ -44,6 +53,7 @@ const items = db.collection('items');
 const listings = db.collection('listings');
 const metadatas = db.collection('metadatas');
 const sessions = db.collection('sessions');
+const areas = db.collection('areas');
 
 const ALLOWED_ITEM_TYPES = ['Weapon', 'Armor'];
 
@@ -294,8 +304,12 @@ app.post('/api/create-username', (req, res) => {
                     .then((snapshot) => {
                         if (snapshot.empty) {
                             users.doc(userId).set({ username })
-                                .then(() => {
+                                .then(async () => {
                                     //console.log(`Username ${username} created for userId ${userId}`);
+
+
+                                    await users.doc(userId).update({ ownedAreas: [0], coins: 0 });
+
                                     return res.status(201).json({ message: 'Username created successfully' });
                                 })
                                 .catch((error) => {
@@ -1268,6 +1282,7 @@ app.post('/api/add-user-item/:sessionId', async (req, res) => {
  * @response {object} 200 - Confirms equip or unequip action.
  * @response {object} 400 - Missing or invalid request fields.
  * @response {object} 403 - Unauthorized session or item ownership violation.
+ * @response {object} 403 - Equipped item is currently listed for sale.
  * @response {object} 404 - User, user item, or base item not found.
  * @response {object} 500 - Failed to authenticate session or equip item.
  * @description Equips or unequips a user-owned item for the selected slot type.
@@ -1352,6 +1367,12 @@ app.post('/api/equip-item/:sessionId', async (req, res) => {
         }
         if (itemDoc.data().type !== type) {
             return res.status(400).json({ error: 'Provided type does not match user item type' });
+        }
+
+        const listings = await listingDoc.where('userItemId', '==', userItemId).get();
+
+        if (!listings.empty) {
+            return res.status(403).json({ error: 'Cannot equip an item that is currently listed for sale' });
         }
 
         //create equipped subcollection if it doesn't exist and set the equipped item for the type
@@ -1946,8 +1967,13 @@ app.get('/api/get-listed-user-item-ids/:userId', async (req, res) => {
  * @tags Listings, Marketplace
  * @response {object} 201 - Confirms listing creation.
  * @response {object} 400 - Missing required fields or invalid price.
- * @response {object} 403 - User does not own the specified item.
+ * @response {object} 400 - The specified user item does not correspond to the specified base item.
+ * @response {object} 403 - Item already listed for sale.
+ * @response {object} 403 - Item ownership violation or item is currently equipped/listed.
+ * @response {object} 403 - User does not own the specified user item.
+ * @response {object} 403 - Equipped item cannot be listed for sale.
  * @response {object} 404 - User not found.
+ * @response {object} 404 - Item or user item not found.
  * @response {object} 500 - Failed to create listing.
  * @description Creates a new active marketplace listing for a user-owned item.
  * Request (placeholder JSON):
@@ -1990,6 +2016,38 @@ app.post('/api/create-listing', async (req, res) => {
         const inventory = userDoc.data().inventory || [];
         if (!inventory.includes(userItemId)) {
             return res.status(403).json({ error: 'User does not own the specified item' });
+        }
+
+        // Check if the item is already listed
+        const existingListings = await listings.where('userItemId', '==', userItemId).where('active', '==', true).get();
+        if (!existingListings.empty) {
+            return res.status(403).json({ error: 'This item is already listed for sale' });
+        }
+
+        // Check if the item exists        
+        const itemDoc = await items.doc(itemId).get();
+        if (!itemDoc.exists) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+
+        // Check if the userItem exists and belongs to the user
+        const userItemDoc = await userItems.doc(userItemId).get();
+        if (!userItemDoc.exists) {
+            return res.status(404).json({ error: 'User item not found' });
+        }
+        if (userItemDoc.data().userId !== userId) {
+            return res.status(403).json({ error: 'User does not own the specified user item' });
+        }
+
+        // Check if the user item corresponds to the base item
+        if (userItemDoc.data().baseItemId !== itemId) {
+            return res.status(400).json({ error: 'The specified user item does not correspond to the specified base item' });
+        }
+
+        // Check if the item is currently equipped
+        const equippedSnapshot = await users.doc(userId).collection('equipped').where('userItemId', '==', userItemId).get();
+        if (!equippedSnapshot.empty) {
+            return res.status(403).json({ error: 'Cannot list an item that is currently equipped' });
         }
 
         // Create the listing
@@ -2170,6 +2228,181 @@ app.post('/api/buy-listing/:listingId', async (req, res) => {
 
 });
 
+//areas
+
+/**
+ * GET /api/get-all-area
+ * @route GET /api/get-all-area
+ * @endpoint /api/get-all-area
+ * @summary List all available areas.
+ * @tags Areas
+ * @response {object} 200 - Returns all areas with basic details.
+ * @response {object} 500 - Failed to fetch areas.
+ * @description Fetches every area document from the `areas` collection.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {},
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "areas": [
+ *     {
+ *       "id": "0",
+ *       "name": "Starter Plains",
+ *       "imageUrl": "https://example.com/area.png",
+ *       "price": 100
+ *     }
+ *   ]
+ * }
+ * ```
+ */
+
+app.get('/api/get-all-area', async (req, res) => {
+    try {
+        const snapshot = await db.collection('areas').get();
+        const areasArray = [];
+
+        snapshot.forEach((doc) => {
+            const areaData = doc.data();
+            areasArray.push({
+                id: doc.id,
+                name: areaData.name,
+                imageUrl: areaData.imageUrl,
+                price: areaData.price
+            });
+        });
+        res.status(200).json({ areas: areasArray });
+    } catch (error) {
+        console.warn('Error fetching areas:', error);
+        res.status(500).json({ error: 'Failed to fetch areas' });
+    }
+});
+
+/**
+ * GET /api/get-user-areas/:userId
+ * @route GET /api/get-user-areas/:userId
+ * @endpoint /api/get-user-areas/:userId
+ * @summary Get owned areas for a user.
+ * @tags Areas, Users
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns the list of owned area IDs.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 404 - User not found.
+ * @response {object} 500 - Failed to fetch owned areas.
+ * @description Retrieves the `ownedAreas` array for the specified user.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "ownedAreas": [0, 2, 5]
+ * }
+ * ```
+ */
+app.get('/api/get-user-areas/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const ownedAreas = userDoc.data().ownedAreas || [];
+        res.status(200).json({ ownedAreas });
+    } catch (error) {
+        console.warn(`Error fetching owned areas for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to fetch owned areas' });
+    }
+});
+
+
+/**
+ * POST /api/purchase-area/:areaId
+ * @route POST /api/purchase-area/:areaId
+ * @endpoint /api/purchase-area/:areaId
+ * @summary Purchase an area for a user.
+ * @tags Areas, Users, Coins
+ * @param {string} req.params.areaId - Area identifier.
+ * @response {object} 200 - Confirms successful area purchase.
+ * @response {object} 400 - Missing fields, insufficient coins, or area already owned.
+ * @response {object} 404 - User or area not found.
+ * @response {object} 500 - Failed to purchase area.
+ * @description Deducts area price from user coins and appends areaId to `ownedAreas`.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "areaId": "2"
+ *   },
+ *   "body": {
+ *     "userId": "user_123"
+ *   }
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "message": "Area purchased successfully"
+ * }
+ * ```
+ */
+app.post('/api/purchase-area/:areaId', async (req, res) => {
+    const { userId } = req.body;
+    const areaId = req.params.areaId;
+
+    if (!userId || !areaId) {
+        return res.status(400).json({ error: 'Missing userId or areaId in request body' });
+    }
+
+    try {
+        const userDoc = await users.doc(userId).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const areaDoc = await db.collection('areas').doc(areaId).get();
+        if (!areaDoc.exists) {
+            return res.status(404).json({ error: 'Area not found' });
+        }
+        const areaData = areaDoc.data();
+
+        if (userDoc.data().coins < areaData.price) {
+            return res.status(400).json({ error: 'User does not have enough coins' });
+        }
+
+        const ownedAreas = userDoc.data().ownedAreas || [];
+        if (ownedAreas.includes(areaId)) {
+            return res.status(400).json({ error: 'User already owns this area' });
+        }
+
+        await users.doc(userId).update({
+            coins: admin.firestore.FieldValue.increment(-areaData.price),
+            ownedAreas: admin.firestore.FieldValue.arrayUnion(areaId)
+        });
+
+        res.status(200).json({ message: 'Area purchased successfully' });
+    } catch (error) {
+        console.warn(`Error purchasing area ${areaId} for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to purchase area' });
+    }
+});
+
+
 //image handling
 
 /**
@@ -2280,6 +2513,51 @@ app.delete('/api/delete-image', async (req, res) => {
     } catch (error) {
         console.warn("Error deleting image:", error);
         res.status(500).json({ error: "Failed to delete image" });
+    }
+});
+
+/**
+ * GET /api/check-admin/:userId
+ * @route GET /api/check-admin/:userId
+ * @endpoint /api/check-admin/:userId
+ * @summary Check if user is an admin.
+ * @tags Admin
+ * @param {string} req.params.userId - User identifier.
+ * @response {object} 200 - Returns admin status of the user.
+ * @response {object} 400 - Missing userId in request parameters.
+ * @response {object} 500 - Failed to check admin status.
+ * @description Checks if a given user has admin permissions by verifying their presence in the `admins` collection.
+ * Request (placeholder JSON):
+ * ```json
+ * {
+ *   "params": {
+ *     "userId": "user_123"
+ *   },
+ *   "body": {}
+ * }
+ * ```
+ * Response (placeholder JSON):
+ * ```json
+ * {
+ *   "isAdmin": true
+ * }
+ * ```
+ */
+
+app.get('/api/check-admin/:userId', async (req, res) => {
+    const userId = req.params.userId;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'Missing userId in request parameters' });
+    }
+
+    try {
+        const adminStatus = await isAdmin(userId);
+        res.status(200).json({ isAdmin: adminStatus });
+    }
+    catch (error) {
+        console.warn(`Error checking admin status for user ${userId}:`, error);
+        res.status(500).json({ error: 'Failed to check admin status' });
     }
 });
 
