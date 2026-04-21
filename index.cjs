@@ -1589,7 +1589,7 @@ app.post('/api/equip-item/:sessionId', async (req, res) => {
             return res.status(400).json({ error: 'Provided type does not match user item type' });
         }
 
-        const listing = await listings.where('userItemId', '==', userItemId).get();
+        const listing = await listings.where('userItemId', '==', userItemId).where('active', '==', true).get();
 
         if (!listing.empty) {
             return res.status(403).json({ error: 'Cannot equip an item that is currently listed for sale' });
