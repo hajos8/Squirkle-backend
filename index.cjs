@@ -1555,14 +1555,14 @@ app.post('/api/equip-item/:sessionId', async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        if (userItemId === null) {
+        if (userItemId === "") {
             //create equipped subcollection if it doesn't exist and set the equipped item for the type
 
             if (!(await users.doc(userId).collection('equipped').doc(type).get()).exists) {
                 await users.doc(userId).collection('equipped').doc(type).set({});
             }
 
-            await users.doc(userId).collection('equipped').doc(type).set({ userItemId: null }, { merge: true });
+            await users.doc(userId).collection('equipped').doc(type).set({ userItemId: "" }, { merge: true });
             return res.status(200).json({ message: 'Item unequipped successfully' });
         }
 
