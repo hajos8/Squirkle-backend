@@ -77,6 +77,10 @@ Run with coverage:
 pnpm test:coverage
 ```
 
+### Backend Test Screenshot
+
+![Backend test screenshot](BackendTestScreenshot.png)
+
 Current baseline test scope:
 - Session utility: `generateSessionId`
 - System routes: `GET /api/hello`, `GET /api/server-time`
@@ -140,9 +144,9 @@ Collections used:
 - `areas`
 	- purchasable world/zone entries (`name`, `imageUrl`, `price`)
 
-### Firestore Structure Diagram
+### Firestore Database Diagram
 
-![Firestore data structure diagram](backend.png)
+![Firestore database diagram](FirestoreDatabaseDiagram.png)
 
 ## Function Reference
 
