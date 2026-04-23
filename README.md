@@ -11,6 +11,15 @@ Backend service for Squirkle built with Express, Firebase Firestore, and Cloudin
 - Upload parser: Multer (memory storage)
 - Local default URL: `http://localhost:3333`
 
+## Related Repositories
+
+- Frontend: https://github.com/SagiBeno/Squirkle-frontend
+- Game: https://github.com/KristoffRed/Squirkle-Unity
+
+## Deployment
+
+- Backend URL: https://squirkle-backend.vercel.app/
+
 ## Quick Start
 
 1. Install dependencies:
@@ -67,6 +76,10 @@ Run with coverage:
 ```bash
 pnpm test:coverage
 ```
+
+### Backend Test Screenshot
+
+![Backend test screenshot](BackendTestScreenshot.png)
 
 Current baseline test scope:
 - Session utility: `generateSessionId`
@@ -131,23 +144,105 @@ Collections used:
 - `areas`
 	- purchasable world/zone entries (`name`, `imageUrl`, `price`)
 
+### Firestore Database Diagram
+
+![Firestore database diagram](FirestoreDatabaseDiagram.png)
+
+## Function Reference
+
+### `generateSessionId(userId)` => `string`
+
+Generates a unique session ID for a user based on their user ID,
+current timestamp, and a random salt.
+
+**Kind**: global function
+**Returns**: `string` - The generated SHA-256 session ID.
+
+| Param  | Type     | Description         |
+| ------ | -------- | ------------------- |
+| userId | `string` | The ID of the user. |
+
+### `isAdmin(userId)` => `Promise<boolean>`
+
+Checks if a given user is an admin by querying the `admins` collection.
+
+**Kind**: global function
+**Returns**: `Promise<boolean>` - Resolves to `true` if the user is an admin, `false` otherwise.
+
+| Param  | Type     | Description                  |
+| ------ | -------- | ---------------------------- |
+| userId | `string` | The ID of the user to check. |
+
 ## Endpoint Reference
+
+Conventions for placeholders in this section:
+- Placeholder JSON is illustrative and not a strict schema contract.
+- Field names and nested structures can vary by route implementation.
+- Error payloads typically follow `{ "error": "message" }`.
 
 ### System
 
-#### `GET /api/hello`
-- Summary: Health check endpoint.
-- Responses: `200`
+#### `GET /api/hello` => `HelloResponse`
+Summary: Health check endpoint.
 
-#### `GET /api/server-time`
-- Summary: Get server time offset in seconds.
-- Responses: `200`
+**Kind**: endpoint
+**Auth**: Public
+
+Request placeholder:
+
+```json
+{}
+```
+
+| Status | Meaning           | Response Shape          | Notes                     |
+| ------ | ----------------- | ----------------------- | ------------------------- |
+| 200    | Service reachable | `{ "message": string }` | Basic API liveness check. |
+
+Response placeholder (200):
+
+```json
+{
+	"message": "Hello from Squirkle API"
+}
+```
+
+#### `GET /api/server-time` => `ServerTimeResponse`
+Summary: Get server time offset in seconds.
+
+**Kind**: endpoint
+**Auth**: Public
+
+Request placeholder:
+
+```json
+{}
+```
+
+| Status | Meaning                | Response Shape             | Notes                                     |
+| ------ | ---------------------- | -------------------------- | ----------------------------------------- |
+| 200    | Time metadata returned | `{ "serverTime": number }` | Value is server-side time representation. |
+
+Response placeholder (200):
+
+```json
+{
+	"serverTime": 1713866400
+}
+```
 
 ### Sessions
 
-#### `POST /api/create-session`
-- Summary: Create a session token for a user.
-- Body:
+#### `POST /api/create-session` => `CreateSessionResponse`
+Summary: Create a session token for a user.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Body Field | Type     | Required | Description                     |
+| ---------- | -------- | -------- | ------------------------------- |
+| userId     | `string` | Yes      | User ID for session generation. |
+
+Request placeholder:
 
 ```json
 {
@@ -155,23 +250,120 @@ Collections used:
 }
 ```
 
-- Responses: `201`, `400`, `500`
+| Status | Meaning          | Response Shape            | Notes                                     |
+| ------ | ---------------- | ------------------------- | ----------------------------------------- |
+| 201    | Session created  | `{ "sessionId": string }` | Session stored under `sessions/<userId>`. |
+| 400    | Validation error | `{ "error": string }`     | Missing or invalid `userId`.              |
+| 500    | Internal error   | `{ "error": string }`     | Firestore write or server failure.        |
 
-### Users and Coins
+Response placeholder (201):
 
-#### `GET /api/get-username-exists/:username`
-- Summary: Check username availability.
-- Params: `username`
-- Responses: `200`, `400`, `409`, `500`
+```json
+{
+	"sessionId": "3db6eb7c3f8cf95b8b28d37b1ec35516..."
+}
+```
 
-#### `GET /api/get-username/:userid`
-- Summary: Get username by user ID.
-- Params: `userid`
-- Responses: `200`, `400`, `404`, `500`
+Response placeholder (error):
 
-#### `POST /api/create-username`
-- Summary: Create username for a user.
-- Body:
+```json
+{
+	"error": "Missing userId"
+}
+```
+
+### Users
+
+#### `GET /api/get-username-exists/:username` => `UsernameExistsResponse`
+Summary: Check username availability.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param    | Type     | Required | Description       |
+| -------- | -------- | -------- | ----------------- |
+| username | `string` | Yes      | Username to test. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-username-exists/player1`
+
+| Status | Meaning                 | Response Shape        | Notes                              |
+| ------ | ----------------------- | --------------------- | ---------------------------------- |
+| 200    | Username available      | `{ "exists": false }` | Can be used for account setup.     |
+| 409    | Username already exists | `{ "exists": true }`  | Explicit business-status conflict. |
+| 400    | Validation error        | `{ "error": string }` | Missing/invalid param.             |
+| 500    | Internal error          | `{ "error": string }` | Query failure.                     |
+
+Response placeholder (200):
+
+```json
+{
+	"exists": false
+}
+```
+
+Response placeholder (409):
+
+```json
+{
+	"exists": true
+}
+```
+
+#### `GET /api/get-username/:userid` => `GetUsernameResponse`
+Summary: Get username by user ID.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description                  |
+| ------ | -------- | -------- | ---------------------------- |
+| userid | `string` | Yes      | User document ID in `users`. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-username/user_123`
+
+| Status | Meaning          | Response Shape           | Notes                         |
+| ------ | ---------------- | ------------------------ | ----------------------------- |
+| 200    | Username found   | `{ "username": string }` | User exists and has username. |
+| 404    | User not found   | `{ "error": string }`    | No matching user record.      |
+| 400    | Validation error | `{ "error": string }`    | Missing/invalid `userid`.     |
+| 500    | Internal error   | `{ "error": string }`    | Firestore read failure.       |
+
+Response placeholder (200):
+
+```json
+{
+	"username": "player1"
+}
+```
+
+Response placeholder (error):
+
+```json
+{
+	"error": "User not found"
+}
+```
+
+#### `POST /api/create-username` => `CreateUsernameResponse`
+Summary: Create username for a user.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Body Field | Type     | Required | Description       |
+| ---------- | -------- | -------- | ----------------- |
+| userId     | `string` | Yes      | Target user ID.   |
+| username   | `string` | Yes      | Desired username. |
+
+Request placeholder:
 
 ```json
 {
@@ -180,22 +372,139 @@ Collections used:
 }
 ```
 
-- Responses: `201`, `400`, `409`, `500`
+| Status | Meaning           | Response Shape                            | Notes                               |
+| ------ | ----------------- | ----------------------------------------- | ----------------------------------- |
+| 201    | Username created  | `{ "success": true, "username": string }` | Username persisted on user profile. |
+| 409    | Username conflict | `{ "error": string }`                     | Username already taken.             |
+| 400    | Validation error  | `{ "error": string }`                     | Missing fields or invalid format.   |
+| 500    | Internal error    | `{ "error": string }`                     | Write/query failure.                |
 
-#### `GET /api/get-permissions/:userid`
-- Summary: Check whether a user is admin.
-- Params: `userid`
-- Responses: `200`, `400`, `500`
+Response placeholder (201):
 
-#### `GET /api/get-coins/:userid`
-- Summary: Get coin balance for a user.
-- Params: `userid`
-- Responses: `200`, `400`, `404`, `500`
+```json
+{
+	"success": true,
+	"username": "player1"
+}
+```
 
-#### `POST /api/update-coins/:sessionId`
-- Summary: Add coins for an authenticated user session.
-- Params: `sessionId`
-- Body:
+### Admin
+
+#### `GET /api/get-permissions/:userid` => `PermissionsResponse`
+Summary: Check whether a user is admin.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description          |
+| ------ | -------- | -------- | -------------------- |
+| userid | `string` | Yes      | User ID to evaluate. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-permissions/user_123`
+
+| Status | Meaning                   | Response Shape           | Notes                                 |
+| ------ | ------------------------- | ------------------------ | ------------------------------------- |
+| 200    | Permission state returned | `{ "isAdmin": boolean }` | Based on `admins/<userid>` existence. |
+| 400    | Validation error          | `{ "error": string }`    | Missing or invalid user ID.           |
+| 500    | Internal error            | `{ "error": string }`    | Permission check failed.              |
+
+Response placeholder (200):
+
+```json
+{
+	"isAdmin": false
+}
+```
+
+#### `GET /api/check-admin/:userId` => `CheckAdminResponse`
+Summary: Check admin status for a user by ID.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description          |
+| ------ | -------- | -------- | -------------------- |
+| userId | `string` | Yes      | User ID to evaluate. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/check-admin/user_123`
+
+| Status | Meaning               | Response Shape           | Notes                               |
+| ------ | --------------------- | ------------------------ | ----------------------------------- |
+| 200    | Admin status returned | `{ "isAdmin": boolean }` | Alternate endpoint for admin check. |
+| 400    | Validation error      | `{ "error": string }`    | Missing or invalid path param.      |
+| 500    | Internal error        | `{ "error": string }`    | Permission lookup failed.           |
+
+Response placeholder (200):
+
+```json
+{
+	"isAdmin": true
+}
+```
+
+### Coins
+
+#### `GET /api/get-coins/:userid` => `GetCoinsResponse`
+Summary: Get coin balance for a user.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description      |
+| ------ | -------- | -------- | ---------------- |
+| userid | `string` | Yes      | User ID to load. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-coins/user_123`
+
+| Status | Meaning          | Response Shape        | Notes                               |
+| ------ | ---------------- | --------------------- | ----------------------------------- |
+| 200    | Coins retrieved  | `{ "coins": number }` | Coin balance returned from profile. |
+| 404    | User not found   | `{ "error": string }` | User document missing.              |
+| 400    | Validation error | `{ "error": string }` | Invalid/missing `userid`.           |
+| 500    | Internal error   | `{ "error": string }` | Read failure.                       |
+
+Response placeholder (200):
+
+```json
+{
+	"coins": 1250
+}
+```
+
+#### `POST /api/update-coins/:sessionId` => `UpdateCoinsResponse`
+Summary: Add coins for an authenticated user session.
+
+**Kind**: endpoint
+**Auth**: Session required (`:sessionId`)
+
+| Param     | Type     | Required | Description           |
+| --------- | -------- | -------- | --------------------- |
+| sessionId | `string` | Yes      | Active session token. |
+
+| Body Field | Type     | Required | Description                           |
+| ---------- | -------- | -------- | ------------------------------------- |
+| userId     | `string` | Yes      | User receiving coins.                 |
+| amount     | `number` | Yes      | Positive increment value (`<= 1000`). |
+
+Request placeholder:
+
+Path example:
+
+`POST /api/update-coins/session_abc123`
+
+Body placeholder:
 
 ```json
 {
@@ -204,135 +513,968 @@ Collections used:
 }
 ```
 
-- Responses: `200`, `400`, `403`, `404`, `500`
+| Status | Meaning                | Response Shape        | Notes                                   |
+| ------ | ---------------------- | --------------------- | --------------------------------------- |
+| 200    | Coins updated          | `{ "coins": number }` | Returns updated balance.                |
+| 403    | Session unauthorized   | `{ "error": string }` | Session does not match user.            |
+| 404    | User/session not found | `{ "error": string }` | Missing user or missing session record. |
+| 400    | Validation error       | `{ "error": string }` | `amount` must be positive and <= 1000.  |
+| 500    | Internal error         | `{ "error": string }` | Update failure.                         |
+
+Response placeholder (200):
+
+```json
+{
+	"coins": 1300
+}
+```
 
 ### Metadata
 
-#### `GET /api/get-all-metadatas`
-- Summary: List all metadata entries.
-- Responses: `200`, `500`
+#### `GET /api/get-all-metadatas` => `GetAllMetadatasResponse`
+Summary: List all metadata entries.
 
-#### `GET /api/get-metadata/:metadataid`
-- Summary: Get one metadata entry by ID.
-- Params: `metadataid`
-- Responses: `200`, `400`, `404`, `500`
+**Kind**: endpoint
+**Auth**: Public
 
-#### `POST /api/create-metadata`
-- Summary: Create metadata entry.
-- Authorization: Admin required
-- Responses: `201`, `400`, `403`, `409`, `500`
+Request placeholder:
 
-#### `PATCH /api/update-metadata/:metadataid`
-- Summary: Update metadata entry fields.
-- Authorization: Admin required
-- Params: `metadataid`
-- Responses: `200`, `400`, `403`, `404`, `500`
+```json
+{}
+```
 
-#### `DELETE /api/delete-metadata/:metadataid`
-- Summary: Delete metadata entry.
-- Authorization: Admin required
-- Params: `metadataid`
-- Responses: `200`, `400`, `403`, `404`, `500`
+| Status | Meaning                | Response Shape              | Notes                           |
+| ------ | ---------------------- | --------------------------- | ------------------------------- |
+| 200    | Metadata list returned | `{ "metadatas": object[] }` | Returns all metadata documents. |
+| 500    | Internal error         | `{ "error": string }`       | Query failure.                  |
+
+Response placeholder (200):
+
+```json
+{
+	"metadatas": [
+		{
+			"id": "meta_rare",
+			"name": "Rare",
+			"color": "#3abf7a"
+		}
+	]
+}
+```
+
+#### `GET /api/get-metadata/:metadataid` => `GetMetadataResponse`
+Summary: Get one metadata entry by ID.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param      | Type     | Required | Description           |
+| ---------- | -------- | -------- | --------------------- |
+| metadataid | `string` | Yes      | Metadata document ID. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-metadata/meta_rare`
+
+| Status | Meaning          | Response Shape           | Notes                             |
+| ------ | ---------------- | ------------------------ | --------------------------------- |
+| 200    | Metadata found   | `{ "metadata": object }` | Matching metadata entry returned. |
+| 404    | Not found        | `{ "error": string }`    | No matching metadata ID.          |
+| 400    | Validation error | `{ "error": string }`    | Missing or invalid `metadataid`.  |
+| 500    | Internal error   | `{ "error": string }`    | Read failure.                     |
+
+Response placeholder (200):
+
+```json
+{
+	"metadata": {
+		"id": "meta_rare",
+		"name": "Rare",
+		"color": "#3abf7a"
+	}
+}
+```
+
+#### `POST /api/create-metadata` => `CreateMetadataResponse`
+Summary: Create metadata entry.
+
+**Kind**: endpoint
+**Auth**: Admin required
+
+| Body Field | Type     | Required | Description                     |
+| ---------- | -------- | -------- | ------------------------------- |
+| userId     | `string` | Yes      | Admin user ID.                  |
+| name       | `string` | Yes      | Metadata display name.          |
+| color      | `string` | No       | Optional color or style marker. |
+
+Request placeholder:
+
+```json
+{
+	"userId": "admin_1",
+	"name": "Rare",
+	"color": "#3abf7a"
+}
+```
+
+| Status | Meaning          | Response Shape                         | Notes                                   |
+| ------ | ---------------- | -------------------------------------- | --------------------------------------- |
+| 201    | Metadata created | `{ "id": string, "metadata": object }` | New metadata entry created.             |
+| 403    | Forbidden        | `{ "error": string }`                  | Requesting user is not admin.           |
+| 409    | Conflict         | `{ "error": string }`                  | Duplicate metadata key/name constraint. |
+| 400    | Validation error | `{ "error": string }`                  | Missing required fields.                |
+| 500    | Internal error   | `{ "error": string }`                  | Write failure.                          |
+
+Response placeholder (201):
+
+```json
+{
+	"id": "meta_rare",
+	"metadata": {
+		"name": "Rare",
+		"color": "#3abf7a"
+	}
+}
+```
+
+#### `PATCH /api/update-metadata/:metadataid` => `UpdateMetadataResponse`
+Summary: Update metadata entry fields.
+
+**Kind**: endpoint
+**Auth**: Admin required
+
+| Param      | Type     | Required | Description                    |
+| ---------- | -------- | -------- | ------------------------------ |
+| metadataid | `string` | Yes      | Metadata document ID to patch. |
+
+| Body Field | Type     | Required | Description         |
+| ---------- | -------- | -------- | ------------------- |
+| userId     | `string` | Yes      | Admin user ID.      |
+| name       | `string` | No       | New metadata name.  |
+| color      | `string` | No       | New metadata color. |
+
+Request placeholder:
+
+Path example:
+
+`PATCH /api/update-metadata/meta_rare`
+
+Body placeholder:
+
+```json
+{
+	"userId": "admin_1",
+	"name": "Epic"
+}
+```
+
+| Status | Meaning          | Response Shape        | Notes                               |
+| ------ | ---------------- | --------------------- | ----------------------------------- |
+| 200    | Metadata updated | `{ "success": true }` | At least one mutable field updated. |
+| 403    | Forbidden        | `{ "error": string }` | Admin check failed.                 |
+| 404    | Not found        | `{ "error": string }` | Metadata ID does not exist.         |
+| 400    | Validation error | `{ "error": string }` | Invalid ID or no valid fields.      |
+| 500    | Internal error   | `{ "error": string }` | Update failure.                     |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true
+}
+```
+
+#### `DELETE /api/delete-metadata/:metadataid` => `DeleteMetadataResponse`
+Summary: Delete metadata entry.
+
+**Kind**: endpoint
+**Auth**: Admin required
+
+| Param      | Type     | Required | Description                     |
+| ---------- | -------- | -------- | ------------------------------- |
+| metadataid | `string` | Yes      | Metadata document ID to delete. |
+
+| Body Field | Type     | Required | Description    |
+| ---------- | -------- | -------- | -------------- |
+| userId     | `string` | Yes      | Admin user ID. |
+
+Request placeholder:
+
+Path example:
+
+`DELETE /api/delete-metadata/meta_rare`
+
+Body placeholder:
+
+```json
+{
+	"userId": "admin_1"
+}
+```
+
+| Status | Meaning          | Response Shape        | Notes                           |
+| ------ | ---------------- | --------------------- | ------------------------------- |
+| 200    | Metadata deleted | `{ "success": true }` | Document removed.               |
+| 403    | Forbidden        | `{ "error": string }` | Admin check failed.             |
+| 404    | Not found        | `{ "error": string }` | Metadata not found.             |
+| 400    | Validation error | `{ "error": string }` | Invalid metadata ID or user ID. |
+| 500    | Internal error   | `{ "error": string }` | Delete failure.                 |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true
+}
+```
 
 ### Items
 
-#### `GET /api/get-all-items`
-- Summary: List all base items.
-- Responses: `200`, `500`
+#### `GET /api/get-all-items` => `GetAllItemsResponse`
+Summary: List all base items.
 
-#### `GET /api/get-item/:itemid`
-- Summary: Get one base item by ID.
-- Params: `itemid`
-- Responses: `200`, `404`, `500`
+**Kind**: endpoint
+**Auth**: Public
 
-#### `POST /api/create-item`
-- Summary: Create base item and stats.
-- Authorization: Admin required
-- Responses: `201`, `400`, `403`, `409`, `500`
+Request placeholder:
 
-#### `PATCH /api/update-item/:itemid`
-- Summary: Update base item and/or stats.
-- Authorization: Admin required
-- Params: `itemid`
-- Responses: `200`, `400`, `403`, `404`, `500`
+```json
+{}
+```
 
-#### `DELETE /api/delete-item/:itemid`
-- Summary: Delete base item.
-- Authorization: Admin required
-- Params: `itemid`
-- Responses: `200`, `400`, `403`, `500`
+| Status | Meaning        | Response Shape          | Notes                                             |
+| ------ | -------------- | ----------------------- | ------------------------------------------------- |
+| 200    | Items returned | `{ "items": object[] }` | Includes base fields and optional metadata links. |
+| 500    | Internal error | `{ "error": string }`   | Query failure.                                    |
 
-### Inventory and Equipment
+Response placeholder (200):
 
-#### `POST /api/add-user-item/:sessionId`
-- Summary: Add a base item instance to user inventory.
-- Params: `sessionId`
-- Responses: `201`, `400`, `403`, `404`, `500`
+```json
+{
+	"items": [
+		{
+			"id": "item_sword_001",
+			"name": "Iron Sword",
+			"type": "Weapon"
+		}
+	]
+}
+```
 
-#### `POST /api/equip-item/:sessionId`
-- Summary: Equip or unequip a user item.
-- Params: `sessionId`
-- Responses: `200`, `400`, `403`, `404`, `500`
+#### `GET /api/get-item/:itemid` => `GetItemResponse`
+Summary: Get one base item by ID.
 
-#### `GET /api/get-equipped-items/:userId`
-- Summary: Get equipped user items.
-- Params: `userId`
-- Responses: `200`, `400`, `404`, `500`
+**Kind**: endpoint
+**Auth**: Public
 
-#### `GET /api/get-inventory/:userId`
-- Summary: Get resolved inventory for a user.
-- Params: `userId`
-- Responses: `200`, `400`, `404`, `500`
+| Param  | Type     | Required | Description            |
+| ------ | -------- | -------- | ---------------------- |
+| itemid | `string` | Yes      | Base item document ID. |
 
-### Listings and Marketplace
+Request placeholder:
 
-#### `GET /api/get-all-active-listings`
-- Summary: List all active marketplace listings.
-- Responses: `200`, `500`
+Path example:
 
-#### `GET /api/get-all-inactive-listings`
-- Summary: List all inactive marketplace listings.
-- Responses: `200`, `500`
+`GET /api/get-item/item_sword_001`
 
-#### `GET /api/get-user-listings/:userId`
-- Summary: List all listings created by a user.
-- Params: `userId`
-- Responses: `200`, `400`, `500`
+| Status | Meaning        | Response Shape        | Notes                                |
+| ------ | -------------- | --------------------- | ------------------------------------ |
+| 200    | Item found     | `{ "item": object }`  | Returns item and related stats data. |
+| 404    | Not found      | `{ "error": string }` | No matching item ID.                 |
+| 500    | Internal error | `{ "error": string }` | Read failure.                        |
 
-#### `GET /api/get-listed-user-item-ids/:userId`
-- Summary: Get listed user-item IDs for a user.
-- Params: `userId`
-- Responses: `200`, `400`, `500`
+Response placeholder (200):
 
-#### `POST /api/create-listing`
-- Summary: Create marketplace listing.
-- Responses: `201`, `400`, `403`, `404`, `500`
+```json
+{
+	"item": {
+		"id": "item_sword_001",
+		"name": "Iron Sword",
+		"type": "Weapon",
+		"stats": {
+			"attack": 12
+		}
+	}
+}
+```
 
-#### `DELETE /api/delete-listing/:listingId`
-- Summary: Delete marketplace listing.
-- Params: `listingId`
-- Responses: `200`, `400`, `403`, `404`, `500`
+#### `POST /api/create-item` => `CreateItemResponse`
+Summary: Create base item and stats.
 
-#### `POST /api/buy-listing/:listingId`
-- Summary: Buy an active marketplace listing.
-- Params: `listingId`
-- Responses (documented): `200`, `400`, `404`, `500`
+**Kind**: endpoint
+**Auth**: Admin required
+
+| Body Field | Type     | Required | Description                        |
+| ---------- | -------- | -------- | ---------------------------------- |
+| userId     | `string` | Yes      | Admin user ID.                     |
+| name       | `string` | Yes      | Item name.                         |
+| type       | `string` | Yes      | Allowed values: `Weapon`, `Armor`. |
+| metadataId | `string` | No       | Optional metadata relation.        |
+| stats      | `object` | No       | Optional initial stats object.     |
+
+Request placeholder:
+
+```json
+{
+	"userId": "admin_1",
+	"name": "Iron Sword",
+	"type": "Weapon",
+	"metadataId": "meta_rare",
+	"stats": {
+		"attack": 12
+	}
+}
+```
+
+| Status | Meaning          | Response Shape                     | Notes                                      |
+| ------ | ---------------- | ---------------------------------- | ------------------------------------------ |
+| 201    | Item created     | `{ "id": string, "item": object }` | Base item and optional stats created.      |
+| 403    | Forbidden        | `{ "error": string }`              | Admin check failed.                        |
+| 409    | Conflict         | `{ "error": string }`              | Duplicate unique item constraints.         |
+| 400    | Validation error | `{ "error": string }`              | Invalid `type` or required fields missing. |
+| 500    | Internal error   | `{ "error": string }`              | Write failure.                             |
+
+Response placeholder (201):
+
+```json
+{
+	"id": "item_sword_001",
+	"item": {
+		"name": "Iron Sword",
+		"type": "Weapon"
+	}
+}
+```
+
+#### `PATCH /api/update-item/:itemid` => `UpdateItemResponse`
+Summary: Update base item and/or stats.
+
+**Kind**: endpoint
+**Auth**: Admin required
+
+| Param  | Type     | Required | Description            |
+| ------ | -------- | -------- | ---------------------- |
+| itemid | `string` | Yes      | Base item document ID. |
+
+| Body Field | Type     | Required | Description                          |
+| ---------- | -------- | -------- | ------------------------------------ |
+| userId     | `string` | Yes      | Admin user ID.                       |
+| name       | `string` | No       | New item name.                       |
+| type       | `string` | No       | New item type (`Weapon` or `Armor`). |
+| metadataId | `string` | No       | New metadata relation.               |
+| stats      | `object` | No       | Stats fields to merge/update.        |
+
+Request placeholder:
+
+Path example:
+
+`PATCH /api/update-item/item_sword_001`
+
+Body placeholder:
+
+```json
+{
+	"userId": "admin_1",
+	"name": "Steel Sword",
+	"stats": {
+		"attack": 16
+	}
+}
+```
+
+| Status | Meaning          | Response Shape        | Notes                               |
+| ------ | ---------------- | --------------------- | ----------------------------------- |
+| 200    | Item updated     | `{ "success": true }` | One or more mutable fields updated. |
+| 403    | Forbidden        | `{ "error": string }` | Admin check failed.                 |
+| 404    | Not found        | `{ "error": string }` | Item does not exist.                |
+| 400    | Validation error | `{ "error": string }` | Invalid data or no update fields.   |
+| 500    | Internal error   | `{ "error": string }` | Update failure.                     |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true
+}
+```
+
+#### `DELETE /api/delete-item/:itemid` => `DeleteItemResponse`
+Summary: Delete base item.
+
+**Kind**: endpoint
+**Auth**: Admin required
+
+| Param  | Type     | Required | Description            |
+| ------ | -------- | -------- | ---------------------- |
+| itemid | `string` | Yes      | Base item document ID. |
+
+| Body Field | Type     | Required | Description    |
+| ---------- | -------- | -------- | -------------- |
+| userId     | `string` | Yes      | Admin user ID. |
+
+Request placeholder:
+
+Path example:
+
+`DELETE /api/delete-item/item_sword_001`
+
+Body placeholder:
+
+```json
+{
+	"userId": "admin_1"
+}
+```
+
+| Status | Meaning          | Response Shape        | Notes                           |
+| ------ | ---------------- | --------------------- | ------------------------------- |
+| 200    | Item deleted     | `{ "success": true }` | Base item removed from catalog. |
+| 403    | Forbidden        | `{ "error": string }` | Admin check failed.             |
+| 400    | Validation error | `{ "error": string }` | Invalid IDs.                    |
+| 500    | Internal error   | `{ "error": string }` | Delete failure.                 |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true
+}
+```
+
+### Equipment
+
+#### `POST /api/equip-item/:sessionId` => `EquipItemResponse`
+Summary: Equip or unequip a user item.
+
+**Kind**: endpoint
+**Auth**: Session required (`:sessionId`)
+
+| Param     | Type     | Required | Description                |
+| --------- | -------- | -------- | -------------------------- |
+| sessionId | `string` | Yes      | Active user session token. |
+
+| Body Field | Type     | Required | Description                      |
+| ---------- | -------- | -------- | -------------------------------- |
+| userId     | `string` | Yes      | Target user ID.                  |
+| userItemId | `string` | Yes      | Owned item instance ID.          |
+| type       | `string` | Yes      | Slot type (`Weapon` or `Armor`). |
+
+Request placeholder:
+
+Path example:
+
+`POST /api/equip-item/session_abc123`
+
+Body placeholder:
+
+```json
+{
+	"userId": "user_123",
+	"userItemId": "uitem_987",
+	"type": "Weapon"
+}
+```
+
+| Status | Meaning             | Response Shape                            | Notes                                  |
+| ------ | ------------------- | ----------------------------------------- | -------------------------------------- |
+| 200    | Equip state changed | `{ "success": true, "equipped": object }` | Handles equip and unequip behavior.    |
+| 403    | Forbidden           | `{ "error": string }`                     | Session mismatch or invalid ownership. |
+| 404    | Not found           | `{ "error": string }`                     | User or item instance not found.       |
+| 400    | Validation error    | `{ "error": string }`                     | Invalid/missing fields.                |
+| 500    | Internal error      | `{ "error": string }`                     | Update failure.                        |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true,
+	"equipped": {
+		"Weapon": "uitem_987"
+	}
+}
+```
+
+#### `GET /api/get-equipped-items/:userId` => `GetEquippedItemsResponse`
+Summary: Get equipped user items.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description                       |
+| ------ | -------- | -------- | --------------------------------- |
+| userId | `string` | Yes      | User ID to resolve equipment for. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-equipped-items/user_123`
+
+| Status | Meaning                 | Response Shape           | Notes                                   |
+| ------ | ----------------------- | ------------------------ | --------------------------------------- |
+| 200    | Equipped items returned | `{ "equipped": object }` | Includes current slots and linked data. |
+| 404    | User not found          | `{ "error": string }`    | User record missing.                    |
+| 400    | Validation error        | `{ "error": string }`    | Missing path param.                     |
+| 500    | Internal error          | `{ "error": string }`    | Read/resolve failure.                   |
+
+Response placeholder (200):
+
+```json
+{
+	"equipped": {
+		"Weapon": {
+			"userItemId": "uitem_987",
+			"name": "Iron Sword"
+		}
+	}
+}
+```
+
+### Inventory
+
+#### `POST /api/add-user-item/:sessionId` => `AddUserItemResponse`
+Summary: Add a base item instance to user inventory.
+
+**Kind**: endpoint
+**Auth**: Session required (`:sessionId`)
+
+| Param     | Type     | Required | Description                |
+| --------- | -------- | -------- | -------------------------- |
+| sessionId | `string` | Yes      | Active user session token. |
+
+| Body Field | Type     | Required | Description                  |
+| ---------- | -------- | -------- | ---------------------------- |
+| userId     | `string` | Yes      | Target user ID.              |
+| itemId     | `string` | Yes      | Base item ID to instantiate. |
+
+Request placeholder:
+
+Path example:
+
+`POST /api/add-user-item/session_abc123`
+
+Body placeholder:
+
+```json
+{
+	"userId": "user_123",
+	"itemId": "item_sword_001"
+}
+```
+
+| Status | Meaning                | Response Shape             | Notes                                  |
+| ------ | ---------------------- | -------------------------- | -------------------------------------- |
+| 201    | Inventory item created | `{ "userItemId": string }` | New user-owned item reference created. |
+| 403    | Forbidden              | `{ "error": string }`      | Session mismatch for user.             |
+| 404    | Not found              | `{ "error": string }`      | User or base item missing.             |
+| 400    | Validation error       | `{ "error": string }`      | Missing fields or invalid IDs.         |
+| 500    | Internal error         | `{ "error": string }`      | Write failure.                         |
+
+Response placeholder (201):
+
+```json
+{
+	"userItemId": "uitem_987"
+}
+```
+
+#### `GET /api/get-inventory/:userId` => `GetInventoryResponse`
+Summary: Get resolved inventory for a user.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description       |
+| ------ | -------- | -------- | ----------------- |
+| userId | `string` | Yes      | User ID to query. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-inventory/user_123`
+
+| Status | Meaning            | Response Shape              | Notes                                       |
+| ------ | ------------------ | --------------------------- | ------------------------------------------- |
+| 200    | Inventory returned | `{ "inventory": object[] }` | User items resolved against base item data. |
+| 404    | User not found     | `{ "error": string }`       | User missing or no inventory root.          |
+| 400    | Validation error   | `{ "error": string }`       | Invalid user ID.                            |
+| 500    | Internal error     | `{ "error": string }`       | Resolution/read failure.                    |
+
+Response placeholder (200):
+
+```json
+{
+	"inventory": [
+		{
+			"userItemId": "uitem_987",
+			"itemId": "item_sword_001",
+			"name": "Iron Sword"
+		}
+	]
+}
+```
+
+### Listings
+
+#### `GET /api/get-all-active-listings` => `GetAllActiveListingsResponse`
+Summary: List all active marketplace listings.
+
+**Kind**: endpoint
+**Auth**: Public
+
+Request placeholder:
+
+```json
+{}
+```
+
+| Status | Meaning                  | Response Shape             | Notes                      |
+| ------ | ------------------------ | -------------------------- | -------------------------- |
+| 200    | Active listings returned | `{ "listings": object[] }` | Filters by `active: true`. |
+| 500    | Internal error           | `{ "error": string }`      | Query failure.             |
+
+Response placeholder (200):
+
+```json
+{
+	"listings": [
+		{
+			"id": "listing_1",
+			"itemId": "item_sword_001",
+			"price": 300,
+			"active": true
+		}
+	]
+}
+```
+
+#### `GET /api/get-all-inactive-listings` => `GetAllInactiveListingsResponse`
+Summary: List all inactive marketplace listings.
+
+**Kind**: endpoint
+**Auth**: Public
+
+Request placeholder:
+
+```json
+{}
+```
+
+| Status | Meaning                    | Response Shape             | Notes                       |
+| ------ | -------------------------- | -------------------------- | --------------------------- |
+| 200    | Inactive listings returned | `{ "listings": object[] }` | Filters by `active: false`. |
+| 500    | Internal error             | `{ "error": string }`      | Query failure.              |
+
+Response placeholder (200):
+
+```json
+{
+	"listings": [
+		{
+			"id": "listing_2",
+			"itemId": "item_armor_001",
+			"price": 500,
+			"active": false
+		}
+	]
+}
+```
+
+#### `GET /api/get-user-listings/:userId` => `GetUserListingsResponse`
+Summary: List all listings created by a user.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description            |
+| ------ | -------- | -------- | ---------------------- |
+| userId | `string` | Yes      | Listing owner user ID. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-user-listings/user_123`
+
+| Status | Meaning                | Response Shape             | Notes                                         |
+| ------ | ---------------------- | -------------------------- | --------------------------------------------- |
+| 200    | User listings returned | `{ "listings": object[] }` | Active and inactive listings may be included. |
+| 400    | Validation error       | `{ "error": string }`      | Invalid user ID.                              |
+| 500    | Internal error         | `{ "error": string }`      | Query failure.                                |
+
+Response placeholder (200):
+
+```json
+{
+	"listings": [
+		{
+			"id": "listing_1",
+			"userId": "user_123",
+			"price": 300,
+			"active": true
+		}
+	]
+}
+```
+
+#### `GET /api/get-listed-user-item-ids/:userId` => `GetListedUserItemIdsResponse`
+Summary: Get listed user-item IDs for a user.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description            |
+| ------ | -------- | -------- | ---------------------- |
+| userId | `string` | Yes      | Listing owner user ID. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-listed-user-item-ids/user_123`
+
+| Status | Meaning          | Response Shape                | Notes                                         |
+| ------ | ---------------- | ----------------------------- | --------------------------------------------- |
+| 200    | IDs returned     | `{ "userItemIds": string[] }` | Used to prevent duplicate listing operations. |
+| 400    | Validation error | `{ "error": string }`         | Invalid user ID.                              |
+| 500    | Internal error   | `{ "error": string }`         | Query failure.                                |
+
+Response placeholder (200):
+
+```json
+{
+	"userItemIds": ["uitem_987", "uitem_654"]
+}
+```
+
+#### `POST /api/create-listing` => `CreateListingResponse`
+Summary: Create marketplace listing.
+
+**Kind**: endpoint
+**Auth**: Session/business validation
+
+| Body Field | Type     | Required | Description                      |
+| ---------- | -------- | -------- | -------------------------------- |
+| userId     | `string` | Yes      | Seller user ID.                  |
+| sessionId  | `string` | Yes      | Active session token for seller. |
+| userItemId | `string` | Yes      | Owned item instance ID.          |
+| itemId     | `string` | Yes      | Base item ID.                    |
+| price      | `number` | Yes      | Listing price in coins.          |
+
+Request placeholder:
+
+```json
+{
+	"userId": "user_123",
+	"sessionId": "session_abc123",
+	"userItemId": "uitem_987",
+	"itemId": "item_sword_001",
+	"price": 300
+}
+```
+
+| Status | Meaning          | Response Shape            | Notes                                       |
+| ------ | ---------------- | ------------------------- | ------------------------------------------- |
+| 201    | Listing created  | `{ "listingId": string }` | Listing marked active.                      |
+| 403    | Forbidden        | `{ "error": string }`     | Session mismatch or unauthorized ownership. |
+| 404    | Not found        | `{ "error": string }`     | User, item, or user item missing.           |
+| 400    | Validation error | `{ "error": string }`     | Invalid payload or price.                   |
+| 500    | Internal error   | `{ "error": string }`     | Write failure.                              |
+
+Response placeholder (201):
+
+```json
+{
+	"listingId": "listing_1"
+}
+```
+
+#### `DELETE /api/delete-listing/:listingId` => `DeleteListingResponse`
+Summary: Delete marketplace listing.
+
+**Kind**: endpoint
+**Auth**: Session/business validation
+
+| Param     | Type     | Required | Description          |
+| --------- | -------- | -------- | -------------------- |
+| listingId | `string` | Yes      | Listing document ID. |
+
+| Body Field | Type     | Required | Description                 |
+| ---------- | -------- | -------- | --------------------------- |
+| userId     | `string` | Yes      | Listing owner user ID.      |
+| sessionId  | `string` | Yes      | Active owner session token. |
+
+Request placeholder:
+
+Path example:
+
+`DELETE /api/delete-listing/listing_1`
+
+Body placeholder:
+
+```json
+{
+	"userId": "user_123",
+	"sessionId": "session_abc123"
+}
+```
+
+| Status | Meaning          | Response Shape        | Notes                                   |
+| ------ | ---------------- | --------------------- | --------------------------------------- |
+| 200    | Listing deleted  | `{ "success": true }` | Removes or deactivates listing record.  |
+| 403    | Forbidden        | `{ "error": string }` | Session mismatch or ownership mismatch. |
+| 404    | Not found        | `{ "error": string }` | Listing not found.                      |
+| 400    | Validation error | `{ "error": string }` | Missing params/body fields.             |
+| 500    | Internal error   | `{ "error": string }` | Delete failure.                         |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true
+}
+```
+
+#### `POST /api/buy-listing/:listingId` => `BuyListingResponse`
+Summary: Buy an active marketplace listing.
+
+**Kind**: endpoint
+**Auth**: Session/business validation
+
+| Param     | Type     | Required | Description          |
+| --------- | -------- | -------- | -------------------- |
+| listingId | `string` | Yes      | Listing to purchase. |
+
+| Body Field  | Type     | Required | Description                 |
+| ----------- | -------- | -------- | --------------------------- |
+| buyerUserId | `string` | Yes      | Buyer user ID.              |
+| sessionId   | `string` | Yes      | Active buyer session token. |
+
+Request placeholder:
+
+Path example:
+
+`POST /api/buy-listing/listing_1`
+
+Body placeholder:
+
+```json
+{
+	"buyerUserId": "user_456",
+	"sessionId": "session_buyer_123"
+}
+```
+
+| Status | Meaning            | Response Shape                             | Notes                                                   |
+| ------ | ------------------ | ------------------------------------------ | ------------------------------------------------------- |
+| 200    | Purchase completed | `{ "success": true, "listingId": string }` | Transfers ownership and updates balances/listing state. |
+| 404    | Not found          | `{ "error": string }`                      | Listing, buyer, or seller references missing.           |
+| 400    | Validation error   | `{ "error": string }`                      | Invalid purchase conditions or payload.                 |
+| 500    | Internal error     | `{ "error": string }`                      | Transaction/update failure.                             |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true,
+	"listingId": "listing_1"
+}
+```
 
 ### Areas
 
-#### `GET /api/get-all-areas`
-- Summary: List all available areas.
-- Responses: `200`, `500`
+#### `GET /api/get-all-areas` => `GetAllAreasResponse`
+Summary: List all available areas.
 
-#### `GET /api/get-user-areas/:userId`
-- Summary: Get owned areas for a user.
-- Params: `userId`
-- Responses: `200`, `400`, `404`, `500`
+**Kind**: endpoint
+**Auth**: Public
 
-#### `POST /api/purchase-area/:areaId`
-- Summary: Purchase an area for a user.
-- Params: `areaId`
-- Body:
+Request placeholder:
+
+```json
+{}
+```
+
+| Status | Meaning        | Response Shape          | Notes                                  |
+| ------ | -------------- | ----------------------- | -------------------------------------- |
+| 200    | Areas returned | `{ "areas": object[] }` | Includes purchasable area definitions. |
+| 500    | Internal error | `{ "error": string }`   | Query failure.                         |
+
+Response placeholder (200):
+
+```json
+{
+	"areas": [
+		{
+			"id": "area_001",
+			"name": "Green Plains",
+			"price": 800
+		}
+	]
+}
+```
+
+#### `GET /api/get-user-areas/:userId` => `GetUserAreasResponse`
+Summary: Get owned areas for a user.
+
+**Kind**: endpoint
+**Auth**: Public
+
+| Param  | Type     | Required | Description                     |
+| ------ | -------- | -------- | ------------------------------- |
+| userId | `string` | Yes      | User ID to fetch ownership for. |
+
+Request placeholder:
+
+Path example:
+
+`GET /api/get-user-areas/user_123`
+
+| Status | Meaning              | Response Shape          | Notes                                 |
+| ------ | -------------------- | ----------------------- | ------------------------------------- |
+| 200    | Owned areas returned | `{ "areas": object[] }` | User-specific owned area IDs/details. |
+| 404    | User not found       | `{ "error": string }`   | User record missing.                  |
+| 400    | Validation error     | `{ "error": string }`   | Invalid user ID.                      |
+| 500    | Internal error       | `{ "error": string }`   | Query failure.                        |
+
+Response placeholder (200):
+
+```json
+{
+	"areas": [
+		{
+			"id": "area_001",
+			"name": "Green Plains"
+		}
+	]
+}
+```
+
+#### `POST /api/purchase-area/:areaId` => `PurchaseAreaResponse`
+Summary: Purchase an area for a user.
+
+**Kind**: endpoint
+**Auth**: Session/business validation
+
+| Param  | Type     | Required | Description                   |
+| ------ | -------- | -------- | ----------------------------- |
+| areaId | `string` | Yes      | Area document ID to purchase. |
+
+| Body Field | Type     | Required | Description                                        |
+| ---------- | -------- | -------- | -------------------------------------------------- |
+| userId     | `string` | Yes      | Buyer user ID.                                     |
+| sessionId  | `string` | No       | If required by implementation, user session token. |
+
+Request placeholder:
+
+Path example:
+
+`POST /api/purchase-area/area_001`
+
+Body placeholder:
 
 ```json
 {
@@ -340,23 +1482,75 @@ Collections used:
 }
 ```
 
-- Responses: `200`, `400`, `404`, `500`
+| Status | Meaning          | Response Shape                          | Notes                                      |
+| ------ | ---------------- | --------------------------------------- | ------------------------------------------ |
+| 200    | Area purchased   | `{ "success": true, "areaId": string }` | Deducts coins and stores ownership.        |
+| 404    | Not found        | `{ "error": string }`                   | Area or user missing.                      |
+| 400    | Validation error | `{ "error": string }`                   | Missing params/body or insufficient coins. |
+| 500    | Internal error   | `{ "error": string }`                   | Transaction/update failure.                |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true,
+	"areaId": "area_001"
+}
+```
 
 ### Images
 
-#### `POST /api/upload-image`
-- Summary: Upload image to Cloudinary.
-- Authorization: Admin required
-- Content-Type: `multipart/form-data`
-- Form fields:
-	- `userId` (text)
-	- `file` (binary)
-- Responses: `201`, `400`, `403`, `500`
+#### `POST /api/upload-image` => `UploadImageResponse`
+Summary: Upload image to Cloudinary.
 
-#### `DELETE /api/delete-image`
-- Summary: Delete image from Cloudinary.
-- Authorization: Admin required
-- Body:
+**Kind**: endpoint
+**Auth**: Admin required
+**Content-Type**: `multipart/form-data`
+
+| Form Field | Type     | Required | Description         |
+| ---------- | -------- | -------- | ------------------- |
+| userId     | `string` | Yes      | Admin user ID.      |
+| file       | `binary` | Yes      | Image file payload. |
+
+Request placeholder:
+
+```json
+{
+	"formData": {
+		"userId": "admin_1",
+		"file": "<binary image>"
+	}
+}
+```
+
+| Status | Meaning          | Response Shape                          | Notes                        |
+| ------ | ---------------- | --------------------------------------- | ---------------------------- |
+| 201    | Image uploaded   | `{ "url": string, "publicId": string }` | Cloudinary upload succeeded. |
+| 403    | Forbidden        | `{ "error": string }`                   | Admin check failed.          |
+| 400    | Validation error | `{ "error": string }`                   | Missing file or user ID.     |
+| 500    | Internal error   | `{ "error": string }`                   | Upload provider failure.     |
+
+Response placeholder (201):
+
+```json
+{
+	"url": "https://res.cloudinary.com/demo/image/upload/v1713/sword.png",
+	"publicId": "sword"
+}
+```
+
+#### `DELETE /api/delete-image` => `DeleteImageResponse`
+Summary: Delete image from Cloudinary.
+
+**Kind**: endpoint
+**Auth**: Admin required
+
+| Body Field | Type     | Required | Description                             |
+| ---------- | -------- | -------- | --------------------------------------- |
+| userId     | `string` | Yes      | Admin user ID.                          |
+| filename   | `string` | Yes      | Image filename or identifier to delete. |
+
+Request placeholder:
 
 ```json
 {
@@ -365,7 +1559,20 @@ Collections used:
 }
 ```
 
-- Responses: `200`, `400`, `403`, `500`
+| Status | Meaning          | Response Shape        | Notes                        |
+| ------ | ---------------- | --------------------- | ---------------------------- |
+| 200    | Image deleted    | `{ "success": true }` | Cloudinary resource removed. |
+| 403    | Forbidden        | `{ "error": string }` | Admin check failed.          |
+| 400    | Validation error | `{ "error": string }` | Missing user ID or filename. |
+| 500    | Internal error   | `{ "error": string }` | Delete provider failure.     |
+
+Response placeholder (200):
+
+```json
+{
+	"success": true
+}
+```
 
 ## Example Request Flow
 
@@ -397,8 +1604,3 @@ Typical admin flow:
 - Request payload parsing supports JSON and URL-encoded bodies.
 - Cloudinary and Firebase configuration values are logged at startup (without exposing secret values directly).
 
-## Future Improvements (Optional)
-
-- Add request validation middleware to centralize schema checks
-- Add automated tests and an OpenAPI export
-- Add endpoint rate limiting and structured logging

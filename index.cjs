@@ -599,6 +599,8 @@ app.get('/api/get-permissions/:userid', async (req, res) => {
     }
 });
 
+// coin management
+
 /**
  * GET /api/get-coins/:userid
  * @route GET /api/get-coins/:userid
@@ -647,8 +649,6 @@ app.get('/api/get-coins/:userid', (req, res) => {
             res.status(500).json({ error: 'Failed to retrieve coins' });
         });
 })
-
-// coin management
 
 /**
  * POST /api/update-coins/:sessionId
@@ -720,8 +720,6 @@ app.post('/api/update-coins/:sessionId', async (req, res) => {
         res.status(500).json({ error: 'Failed to process coin update' });
     }
 });
-
-//base item handler endpoints
 
 
 //metadata handler endpoints
@@ -1021,6 +1019,8 @@ app.delete('/api/delete-metadata/:metadataid', async (req, res) => {
         return res.status(500).json({ error: 'Failed to delete metadata' });
     }
 });
+
+//CRUD endpoints for items
 
 /**
  * GET /api/get-all-items
