@@ -700,7 +700,7 @@ app.post('/api/update-coins/:sessionId', async (req, res) => {
             return res.status(403).json({ error: 'Unauthorized or invalid session' });
         }
 
-        if (typeof amount !== 'number' || amount <= 0 || amount > 1000) {
+        if (typeof amount !== 'number' || amount <= 0 || amount > 10001) {
             return res.status(400).json({ error: 'Invalid coin amount. Must be between 1 and 1000.' });
         }
 
